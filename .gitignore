@@ -11,9 +11,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment files
+# Environment files (keep the template)
 .env
 .env.*
+!.env.example
 
 # Editor directories and files
 .vscode/
@@ -37,3 +38,25 @@ __pycache__/
 *.swp
 *.tmp
 *.temp
+
+# Claude Code agent config — machine/session-specific, not for the shared repo
+.claude/
+
+# Design reference material — not part of the shipped app
+inspiraation photos/
+inspiration links.txt
+
+# Runtime data: SQLite database (contains password hashes + real order data)
+# and its journal files. Never commit these.
+data/*.db
+data/*.db-*
+data/*.bak-*
+data/app.db.bak-*
+
+# Runtime uploads (customer/owner-uploaded dish photos) — generated content,
+# not source. On Vercel these land in ephemeral /tmp anyway (see server/env-paths.js).
+uploads/*
+!uploads/.gitkeep
+
+# Vercel local CLI cache
+.vercel
