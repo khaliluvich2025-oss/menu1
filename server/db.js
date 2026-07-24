@@ -4,9 +4,16 @@ const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const bcrypt = require("bcryptjs");
 const seed = require("./seed-data");
+const { dataDir, IS_VERCEL } = require("./env-paths");
 
-const DATA_DIR = path.join(__dirname, "..", "data");
+const DATA_DIR = dataDir();
 const DB_PATH = path.join(DATA_DIR, "app.db");
+if (IS_VERCEL) {
+  // /tmp is wiped on every cold start: menu edits, orders, and password
+  // changes made during a warm invocation will NOT survive the next one.
+  // This keeps the app bootable on Vercel without migrating off SQLite yet.
+  console.warn("[db] Running on Vercel with an ephemeral /tmp database — data will not persist across cold starts.");
+}
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 

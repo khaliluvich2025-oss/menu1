@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Skill(artifact-design)",
-      "Skill(artifact-design:*)",
-      "Bash(cd \"/c/Users/KHALIL~1/AppData/Local/Temp/claude/C--Users-KhalilKhalfaoui-OneDrive---Asap-Staffing-Desktop-menus-file/95983b8d-6088-4cc3-be85-db07ce0df162/scratchpad/fonts\" *)"
-    ]
-  }
-}
