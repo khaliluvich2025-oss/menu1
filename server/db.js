@@ -1,6 +1,5 @@
 const path = require("node:path");
 const fs = require("node:fs");
-const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const bcrypt = require("bcryptjs");
 const seed = require("./seed-data");
@@ -183,15 +182,22 @@ function seedIfEmpty() {
   }
 }
 
-function generatePassword() {
-  return crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "").slice(0, 12);
-}
+// Fixed, documented test defaults — NOT randomly generated. On Vercel the
+// database resets on every cold start (see IS_VERCEL note above), so a
+// random password would be unrecoverable except through function logs.
+// Set OWNER_PASSWORD / RECEPTIONIST_PASSWORD as real environment variables
+// for anything beyond casual testing — those always take priority over
+// these defaults. These defaults are public (they're in source control);
+// treat them as a known test-only door, not a secret.
+const DEFAULT_OWNER_PASSWORD = "EmberOwner#2026Secure";
+const DEFAULT_RECEPTIONIST_PASSWORD = "EmberFrontDesk#2026";
 
 function seedUsersIfEmpty() {
   const userCount = db.prepare("SELECT COUNT(*) AS n FROM users").get().n;
   if (userCount === 0) {
-    const ownerPassword = process.env.OWNER_PASSWORD || generatePassword();
-    const receptionistPassword = process.env.RECEPTIONIST_PASSWORD || generatePassword();
+    const ownerPassword = process.env.OWNER_PASSWORD || DEFAULT_OWNER_PASSWORD;
+    const receptionistPassword = process.env.RECEPTIONIST_PASSWORD || DEFAULT_RECEPTIONIST_PASSWORD;
+    const usingDefaults = !process.env.OWNER_PASSWORD || !process.env.RECEPTIONIST_PASSWORD;
 
     const insertUser = db.prepare(
       "INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, ?, 1)"
@@ -199,15 +205,16 @@ function seedUsersIfEmpty() {
     insertUser.run("owner", bcrypt.hashSync(ownerPassword, 10), "owner");
     insertUser.run("receptionist", bcrypt.hashSync(receptionistPassword, 10), "receptionist");
 
-    console.log("\n================  CMS LOGIN CREDENTIALS (first run)  ================");
-    console.log("  Save these now — they will not be shown again.");
-    console.log("  Owner login:");
-    console.log(`    username: owner`);
-    console.log(`    password: ${ownerPassword}`);
-    console.log("  Receptionist login:");
-    console.log(`    username: receptionist`);
-    console.log(`    password: ${receptionistPassword}`);
-    console.log("  Both accounts will be asked to set a new password on first login.");
+    console.log("\n================  CMS LOGIN CREDENTIALS (seeded)  ================");
+    console.log("  Owner login:      username: owner         password: (see OWNER_PASSWORD env var, or the documented default)");
+    console.log("  Receptionist login: username: receptionist password: (see RECEPTIONIST_PASSWORD env var, or the documented default)");
+    if (usingDefaults) {
+      console.log("  NOTE: one or both env vars aren't set — using the fixed, public, documented test");
+      console.log("  defaults from DEPLOYMENT.md instead of a random password. Fine for testing;");
+      console.log("  set OWNER_PASSWORD/RECEPTIONIST_PASSWORD for anything beyond that.");
+    }
+    console.log("  Both accounts are asked to set a new password on first login (won't survive");
+    console.log("  the next cold start on Vercel without persistent storage — expected for now).");
     console.log("=======================================================================\n");
   }
 }

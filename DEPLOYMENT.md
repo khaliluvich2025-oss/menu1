@@ -10,6 +10,14 @@
 - Static assets (`index.html`, the admin panel) live under `public/`, because
   Vercel does not serve files through `express.static()` in deployed
   functions — only `public/**` is served (by its CDN, ahead of the function).
+- `api/[...path].js` — `/api/**` is a reserved, platform-routed namespace on
+  Vercel: requests under it are matched against actual files in `api/`
+  *before* they'd ever reach a "detected server" function like the root
+  `server.js`. This catch-all re-exports the same Express app so its
+  internal `/api` routing (menu, orders, auth, stats, everything) actually
+  receives those requests. Without this file, every `/api/*` call 404s at
+  the platform level and the site loads with no menu data — confirmed live,
+  not theoretical (see the "confirmed working" note below).
 - `server/env-paths.js` redirects the SQLite file and upload destination to
   `/tmp` when `process.env.VERCEL` is set, since Vercel functions have a
   read-only filesystem everywhere except `/tmp`. Without this the app would
@@ -38,15 +46,23 @@ this deployment keeps both, made just stable enough not to crash. Concretely:
   deploy). Any menu edits, orders, or status changes made during one "warm"
   window are gone on the next cold start — it reseeds from `server/seed-data.js`
   each time.
-- **Login passwords reset too**, for the same reason — a fresh random owner/
-  receptionist password is generated on every reseed unless you set
-  `OWNER_PASSWORD` / `RECEPTIONIST_PASSWORD` as environment variables, which
-  makes at least the *credentials* stable even though the *data* still isn't.
+- **Login credentials are a fixed test default, not random.** Every reseed
+  (i.e. every cold start, until you set real env vars) creates:
+  - `owner` / `EmberOwner#2026Secure`
+  - `receptionist` / `EmberFrontDesk#2026`
+
+  These values are **public** — they're in this source file and in
+  `server/db.js`. That's a deliberate trade-off for a test deployment with an
+  ephemeral database (a *random* password would be unrecoverable except
+  through Vercel's function logs, which is worse for testing). Set
+  `OWNER_PASSWORD` / `RECEPTIONIST_PASSWORD` as real environment variables
+  before this is used for anything beyond casual testing — they always
+  override these defaults. Either way, both accounts are forced to set a new
+  password on first login; on Vercel that change won't survive the next cold
+  start without persistent storage (expected, same root cause as above).
 - **Uploaded dish photos won't persist**, and may not reliably serve back at
-  all depending on how Vercel's Node runtime bundles the function — this
-  wasn't verified against a live deployment (no Vercel account access from
-  this environment). Treat image upload as untested on Vercel until you've
-  tried it yourself.
+  all — this specific feature (multer upload → serve back) hasn't been
+  tested against the live deployment yet. Treat it as unverified until tried.
 - **This is a structural/demo deployment, not production-ready for real
   customer traffic.** Before that, you'll want a real persistent database
   (Vercel Postgres, Turso, or the Supabase move discussed earlier) and a
