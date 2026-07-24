@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr" data-theme="dark" data-motion="subtle">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Ember Table — Menu digital</title>
+<meta name="description" content="Ember Table — menu digital premium. Parcourez le menu, composez votre commande et envoyez-la directement à notre équipe.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   STYLES — shared design tokens (CSS custom properties), dark theme default,
+   branded light theme, RTL handling, layout, components, animations.
+   ========================================================================= */
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin:0; padding:0; }
+  [hidden]{ display:none !important; }
+
+  :root{
+    /* --- Brand palette (from restaurantConfig.colors) --- */
+    --carbon:#0E0F16;
+    --ember:#F28A18;
+    --toasted:#6D4934;
+
+    /* --- Typography --- */
+    --font-latin: 'Inter', system-ui, "Segoe UI", Arial, sans-serif;
+    --font-arabic: 'Noto Kufi Arabic', Tahoma, Arial, sans-serif;
+    --font-body: var(--font-latin);
+
+    /* --- Dark theme (default) tokens --- */
+    --bg:#0E0F16;
+    --bg-shell:#0B0C12;
+    --bg-elevated:#15161F;
+    --surface:#1B1C27;
+    --surface-alt:#22232F;
+    --border: rgba(255,255,255,0.09);
+    --text:#F5F3EF;
+    --text-muted:#A6A4B3;
+    --text-on-ember:#1A1204;
+    --primary: var(--ember);
+    --primary-hover:#FF9C34;
+    --secondary: var(--toasted);
+    --focus-ring: var(--ember);
+    --shadow-1: 0 1px 3px rgba(0,0,0,.5);
+    --shadow-2: 0 14px 32px rgba(0,0,0,.4);
+    --overlay: rgba(6,6,10,.6);
+
+    /* --- Radii / layout --- */
+    --radius-sm:8px;
+    --radius-md:14px;
+    --radius-lg:22px;
+    --header-h:64px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+    /* --- Motion (scaled by data-motion / prefers-reduced-motion) --- */
+    --motion-scale:1;
+    --stagger-step:32ms;
+    --transition-base: calc(220ms * var(--motion-scale)) cubic-bezier(.4,0,.2,1);
+    --transition-fast: calc(140ms * var(--motion-scale)) ease;
+    --transition-slow: calc(320ms * var(--motion-scale)) cubic-bezier(.4,0,.2,1);
+  }
+
+  html[data-motion="subtle"]{ --motion-scale:0.65; --stagger-step:22ms; }
+  html[data-motion="normal"]{ --motion-scale:1; --stagger-step:40ms; }
+  html[data-motion="none"]{ --motion-scale:0; --stagger-step:0ms; }
+
+  @media (prefers-reduced-motion: reduce){
+    :root{ --motion-scale:0 !important; --stagger-step:0ms !important; }
+  }
+
+  /* --- Branded LIGHT theme: warm, clean, modern — not an inverted dark theme --- */
+  html[data-theme="light"]{
+    --bg:#FBF5EC;
+    --bg-shell:#F3E8D8;
+    --bg-elevated:#F6EEE1;
+    --surface:#FFFFFF;
+    --surface-alt:#F4EADC;
+    --border: rgba(48,32,20,.12);
+    --text:#241C15;
+    --text-muted:#7A6A5C;
+    --text-on-ember:#1A1204;
+    --primary:#E37711;
+    --primary-hover:#CC6A0C;
+    --secondary: var(--toasted);
+    --focus-ring:#241C15;
+    --shadow-1: 0 1px 2px rgba(60,38,16,.08);
+    --shadow-2: 0 16px 30px rgba(60,38,16,.14);
+    --overlay: rgba(36,24,14,.42);
+  }
+
+  html[dir="rtl"]{ --font-body: var(--font-arabic); }
+
+  html,body{ height:100%; }
+  body{
+    background: var(--bg-shell);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+    transition: background-color var(--transition-base), color var(--transition-base);
+  }
+  body.scroll-locked{ overflow:hidden; width:100%; }
+
+  h1,h2,h3,h4,h5{ margin:0; font-family:var(--font-body); }
+  p{ margin:0; }
+  button{ font-family:var(--font-body); }
+  input{ font-family:var(--font-body); }
+  a{ color:inherit; }
+  ul{ margin:0; padding:0; list-style:none; }
+
+  img{ max-width:100%; display:block; }
+
+  .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+
+  :focus-visible{ outline:2px solid var(--focus-ring); outline-offset:2px; border-radius:4px; }
+
+  .skip-link{
+    position:fixed; top:-60px; left:12px; z-index:200;
+    background:var(--primary); color:var(--text-on-ember);
+    padding:10px 16px; border-radius:var(--radius-sm); font-weight:700;
+    transition: top var(--transition-fast);
+  }
+  .skip-link:focus{ top:12px; }
+
+  .container{
+    max-width:1180px;
+    margin-inline:auto;
+    padding-inline:20px;
+  }
+
+  .app-shell{
+    max-width:1440px;
+    margin-inline:auto;
+    background:var(--bg);
+    min-height:100%;
+    box-shadow: 0 0 60px rgba(0,0,0,.15);
+    transition: background-color var(--transition-base);
+  }
+
+  /* ---------- BUTTONS ---------- */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    border:none; border-radius:var(--radius-md);
+    font-weight:700; font-size:.95rem; cursor:pointer;
+    padding:13px 22px; min-height:48px;
+    transition: transform var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
+    -webkit-tap-highlight-color:transparent;
+  }
+  .btn:active{ transform:scale(.96); }
+  .btn-primary{ background:var(--primary); color:var(--text-on-ember); box-shadow:var(--shadow-1); }
+  .btn-primary:hover{ background:var(--primary-hover); }
+  .btn-secondary{ background:transparent; color:var(--text); border:1.5px solid var(--border); }
+  .btn-secondary:hover{ border-color: var(--primary); }
+  .btn:disabled, .btn.is-disabled{ opacity:.5; cursor:not-allowed; }
+  .btn:disabled:active, .btn.is-disabled:active{ transform:none; }
+
+  .icon-btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:44px; height:44px; border-radius:50%;
+    border:1px solid var(--border); background:var(--surface); color:var(--text);
+    cursor:pointer; position:relative; flex-shrink:0;
+    transition: transform var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+  }
+  .icon-btn:hover{ border-color:var(--primary); }
+  .icon-btn:active{ transform:scale(.92); }
+
+  /* ---------- HEADER ---------- */
+  .site-header{
+    position:sticky; top:0; z-index:50;
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    border-bottom:1px solid transparent;
+    transition: background-color var(--transition-base), border-color var(--transition-base), backdrop-filter var(--transition-base);
+  }
+  .site-header.is-scrolled{
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom-color:var(--border);
+  }
+  .header-inner{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding-block:16px;
+    transition: padding var(--transition-base);
+  }
+  .site-header.is-scrolled .header-inner{ padding-block:10px; }
+
+  .brand{ display:flex; align-items:center; gap:12px; min-width:0; }
+  .brand-logo-mark{ color:var(--primary); flex-shrink:0; }
+  .brand-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .brand-name{ font-weight:800; font-size:1.05rem; letter-spacing:-.01em; white-space:nowrap; }
+  .brand-status{ display:flex; align-items:center; gap:6px; font-size:.76rem; color:var(--text-muted); white-space:nowrap; }
+  .status-dot{ width:7px; height:7px; border-radius:50%; background:#3FBE5F; box-shadow:0 0 0 3px color-mix(in srgb, #3FBE5F 25%, transparent); flex-shrink:0; }
+
+  .header-controls{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+
+  .lang-switch{ display:flex; align-items:center; gap:2px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:3px; }
+  .lang-btn{
+    border:none; background:transparent; color:var(--text-muted);
+    font-size:.76rem; font-weight:700; letter-spacing:.02em;
+    padding:7px 10px; border-radius:999px; cursor:pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+  }
+  .lang-btn.is-active{ background:var(--primary); color:var(--text-on-ember); }
+  .lang-btn:not(.is-active):hover{ color:var(--text); }
+
+  .theme-toggle .icon-sun{ display:none; }
+  html[data-theme="light"] .theme-toggle .icon-sun{ display:block; }
+  html[data-theme="light"] .theme-toggle .icon-moon{ display:none; }
+
+  .cart-btn{ position:relative; }
+  .cart-count{
+    position:absolute; top:-4px; inset-inline-end:-4px;
+    min-width:20px; height:20px; padding:0 4px; border-radius:999px;
+    background:var(--primary); color:var(--text-on-ember);
+    font-size:.68rem; font-weight:800; line-height:20px; text-align:center;
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  .cart-count.is-zero{ opacity:0; transform:scale(.6); }
+  .cart-count.bump{ animation: cartBump calc(360ms * var(--motion-scale)) ease; }
+  @keyframes cartBump{ 0%{transform:scale(1);} 35%{transform:scale(1.35);} 100%{transform:scale(1);} }
+
+  /* ---------- HERO ---------- */
+  .hero{ padding-block: 28px 20px; overflow:hidden; }
+  .hero-inner{ display:grid; grid-template-columns: 1fr; gap:22px; align-items:center; }
+  .hero-copy{
+    opacity:0; transform:translateY(10px);
+    animation: heroReveal var(--transition-slow) forwards;
+    animation-delay: calc(60ms * var(--motion-scale));
+  }
+  .hero-media{
+    opacity:0; transform:translateY(10px);
+    animation: heroReveal var(--transition-slow) forwards;
+    animation-delay: calc(140ms * var(--motion-scale));
+  }
+  @keyframes heroReveal{ to{ opacity:1; transform:translateY(0); } }
+
+  .hero-kicker{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:.78rem; font-weight:700; color:var(--secondary);
+    background: color-mix(in srgb, var(--secondary) 14%, transparent);
+    border:1px solid color-mix(in srgb, var(--secondary) 35%, transparent);
+    padding:6px 12px; border-radius:999px; margin-bottom:14px;
+  }
+  .hero-headline{ font-size:clamp(1.8rem, 5vw, 2.6rem); font-weight:800; letter-spacing:-.02em; line-height:1.08; margin-bottom:12px; }
+  .hero-subtext{ font-size:1rem; color:var(--text-muted); max-width:46ch; margin-bottom:16px; }
+  .hero-promo{
+    display:inline-flex; align-items:center; gap:10px;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:10px 14px; margin-bottom:18px;
+    font-weight:600; font-size:.88rem;
+  }
+  .hero-promo-badge{ background:var(--primary); color:var(--text-on-ember); font-weight:800; font-size:.75rem; padding:3px 8px; border-radius:6px; }
+  .hero-cta{ width:100%; max-width:280px; }
+
+  .hero-image-frame{
+    position:relative; width:100%; aspect-ratio:16/11; border-radius:var(--radius-lg);
+    overflow:hidden; border:1px solid var(--border); box-shadow:var(--shadow-2);
+  }
+  .hero-image{ width:100%; height:100%; object-fit:cover; }
+  .hero-fallback{
+    width:100%; height:100%; position:relative; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--ember) 45%, transparent), transparent 60%), linear-gradient(135deg, var(--toasted), var(--carbon));
+  }
+  .hero-fallback::before{
+    content:""; position:absolute; inset:0;
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 2px, transparent 2px 16px);
+  }
+  .hero-fallback .fallback-mono{ position:relative; font-size:3.2rem; font-weight:800; color:rgba(255,255,255,.5); letter-spacing:-.02em; }
+
+  /* ---------- MENU CONTROLS (search / filters / category nav) ---------- */
+  .menu-controls{
+    position:sticky; top:var(--header-h); z-index:40;
+    background:var(--bg); border-bottom:1px solid var(--border);
+    padding-block:12px;
+  }
+  .search-row{ margin-bottom:10px; }
+  .search-field{
+    position:relative; display:flex; align-items:center;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding-inline:14px; height:48px;
+  }
+  .search-field:focus-within{ border-color:var(--primary); }
+  .search-icon{ color:var(--text-muted); flex-shrink:0; }
+  .search-input{
+    flex:1; border:none; background:transparent; color:var(--text);
+    font-size:.95rem; padding-inline-start:10px; height:100%; min-width:0;
+  }
+  .search-input::placeholder{ color:var(--text-muted); }
+  .search-input:focus{ outline:none; }
+  .search-clear{
+    border:none; background:var(--surface-alt); color:var(--text-muted);
+    width:26px; height:26px; border-radius:50%; font-size:1rem; line-height:1;
+    cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  }
+  .search-clear:hover{ color:var(--text); }
+
+  .filter-row{ display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; margin-bottom:10px; }
+  .filter-row::-webkit-scrollbar{ display:none; }
+  .filter-chip{
+    flex-shrink:0; border:1.5px solid var(--border); background:var(--surface); color:var(--text-muted);
+    font-size:.84rem; font-weight:600; padding:9px 15px; border-radius:999px; cursor:pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    position:relative;
+  }
+  .filter-chip.is-active{ background:var(--primary); color:var(--text-on-ember); border-color:var(--primary); font-weight:800; }
+  .filter-chip:not(.is-active):hover{ border-color:var(--primary); color:var(--text); }
+
+  .category-nav-wrap{ position:relative; }
+  .category-nav-wrap::before, .category-nav-wrap::after{
+    content:""; position:absolute; top:0; bottom:0; width:26px; z-index:2; pointer-events:none;
+  }
+  .category-nav-wrap::before{ inset-inline-start:0; background:linear-gradient(to right, var(--bg), transparent); }
+  .category-nav-wrap::after{ inset-inline-end:0; background:linear-gradient(to left, var(--bg), transparent); }
+  html[dir="rtl"] .category-nav-wrap::before{ background:linear-gradient(to left, var(--bg), transparent); }
+  html[dir="rtl"] .category-nav-wrap::after{ background:linear-gradient(to right, var(--bg), transparent); }
+
+  .category-nav{
+    position:relative; display:flex; gap:6px; overflow-x:auto; scrollbar-width:none;
+    padding:2px 2px 10px; scroll-behavior:smooth;
+  }
+  .category-nav::-webkit-scrollbar{ display:none; }
+  .category-chip{
+    flex-shrink:0; border:none; background:transparent; color:var(--text-muted);
+    font-size:.9rem; font-weight:600; padding:8px 12px; border-radius:var(--radius-sm); cursor:pointer;
+    transition: color var(--transition-fast);
+    white-space:nowrap;
+  }
+  .category-chip.is-active{ color:var(--text); font-weight:800; }
+  .category-nav-indicator{
+    position:absolute; bottom:4px; height:3px; border-radius:3px; background:var(--primary);
+    transition: transform var(--transition-base), width var(--transition-base), opacity var(--transition-fast);
+    left:0; width:0; opacity:0;
+  }
+
+  /* ---------- MENU / DISH GRID ---------- */
+  .menu-section{ padding-block:28px 8px; }
+  .category-section{ margin-bottom:34px; scroll-margin-top: calc(var(--header-h) + 120px); }
+  .category-heading{ font-size:1.2rem; font-weight:800; margin-bottom:14px; letter-spacing:-.01em; }
+
+  .dish-grid{
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(230px,1fr)); gap:14px;
+    grid-auto-flow: dense;
+  }
+
+  .dish-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md);
+    display:flex; overflow:hidden;
+    opacity:0; transform:translateY(14px);
+    transition: transform var(--transition-base), opacity var(--transition-base), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  }
+  .dish-card.is-visible{ opacity:1; transform:translateY(0); }
+  @media (hover:hover){
+    .dish-card:hover{ box-shadow:var(--shadow-1); border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); transform:translateY(-3px); }
+    .dish-card.is-visible:hover{ transform:translateY(-3px); }
+  }
+  .dish-card:active{ transform:scale(.985); }
+
+  .dish-card.regular{ flex-direction:row; gap:12px; padding:10px; }
+  .dish-card.regular .dish-media{ width:92px; height:92px; border-radius:var(--radius-sm); flex-shrink:0; }
+  .dish-card.regular .dish-content{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; padding-block:2px; }
+  .dish-card.regular .dish-name{ font-size:.96rem; }
+  .dish-card.regular .dish-desc{ font-size:.8rem; -webkit-line-clamp:2; }
+
+  .dish-card.featured{ flex-direction:column; border-radius:var(--radius-lg); }
+  @media (min-width:640px){ .dish-card.featured{ grid-column:span 2; } }
+  .dish-card.featured .dish-media{ width:100%; aspect-ratio:16/10; border-radius:0; }
+  .dish-card.featured .dish-content{ padding:16px; display:flex; flex-direction:column; gap:6px; }
+  .dish-card.featured .dish-name{ font-size:1.22rem; }
+  .dish-card.featured .dish-desc{ font-size:.9rem; -webkit-line-clamp:2; }
+
+  .dish-media{ position:relative; overflow:hidden; background:var(--surface-alt); flex-shrink:0; }
+  .dish-image{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1;
+    opacity:0; transition: opacity var(--transition-base), transform var(--transition-slow);
+  }
+  .dish-image.is-loaded{ opacity:1; }
+  @media (hover:hover){ .dish-card:hover .dish-image.is-loaded{ transform:scale(1.06); } }
+
+  .dish-fallback{ position:absolute; inset:0; width:100%; height:100%; z-index:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .dish-fallback::before{ content:""; position:absolute; inset:0; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 2px, transparent 2px 14px); }
+  .dish-fallback svg{ position:relative; width:100%; height:100%; }
+
+  .dish-content{ display:flex; flex-direction:column; }
+  .dish-badges{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+  .badge{ font-size:.66rem; font-weight:800; letter-spacing:.02em; padding:3px 8px; border-radius:6px; text-transform:uppercase; }
+  .badge-featured{ background:var(--primary); color:var(--text-on-ember); }
+  .badge-recommended{ background:transparent; border:1px solid var(--secondary); color:var(--secondary); }
+  .badge-offer{ background:var(--secondary); color:#fff; }
+  .dish-cat-tag{ font-size:.66rem; font-weight:700; color:var(--text-muted); padding:3px 8px; border:1px solid var(--border); border-radius:6px; }
+
+  .dish-name{ font-weight:700; letter-spacing:-.01em; margin-bottom:2px; }
+  .dish-desc{
+    font-size:.85rem; color:var(--text-muted); margin-bottom:8px;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+  }
+  .dish-footer{ margin-top:auto; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .dish-price{ display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+  .price-old{ font-size:.78rem; color:var(--text-muted); text-decoration:line-through; }
+  .price-current{ font-size:1rem; font-weight:800; color:var(--text); }
+  .price-percent{ font-size:.68rem; font-weight:800; background:var(--primary); color:var(--text-on-ember); padding:2px 6px; border-radius:6px; }
+
+  .btn-add{
+    background:var(--surface-alt); color:var(--text); border:1.5px solid var(--border);
+    padding:9px 14px; min-height:40px; font-size:.84rem; border-radius:var(--radius-sm); white-space:nowrap;
+  }
+  .btn-add:hover{ background:var(--primary); color:var(--text-on-ember); border-color:var(--primary); }
+  .btn-add.is-disabled{ background:transparent; }
+
+  .no-results{ text-align:center; padding:60px 20px; }
+  .no-results-title{ font-size:1.15rem; font-weight:800; margin-bottom:8px; }
+  .no-results-text{ color:var(--text-muted); margin-bottom:18px; }
+
+  /* ---------- RESTAURANT INFO / FOOTER ---------- */
+  .info-section{ padding-block:36px 24px; border-top:1px solid var(--border); margin-top:20px; }
+  .info-grid{ display:grid; gap:24px; grid-template-columns:1fr; margin-bottom:18px; }
+  @media (min-width:680px){ .info-grid{ grid-template-columns:1.4fr 1fr; } }
+  .info-title{ font-size:1.15rem; font-weight:800; margin-bottom:10px; }
+  .info-line{ font-size:.9rem; color:var(--text-muted); margin-bottom:6px; }
+  .info-line strong{ color:var(--text); font-weight:700; }
+  .info-social h3{ font-size:.9rem; font-weight:800; margin-bottom:10px; }
+  .social-links{ display:flex; gap:10px; flex-wrap:wrap; }
+  .social-link{
+    font-size:.82rem; font-weight:700; padding:8px 14px; border-radius:999px;
+    border:1px solid var(--border); background:var(--surface); text-decoration:none;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+  }
+  .social-link:hover{ border-color:var(--primary); color:var(--primary); }
+  .footer-note{ font-size:.78rem; color:var(--text-muted); padding-top:14px; border-top:1px solid var(--border); text-align:center; }
+
+  /* ---------- CART ---------- */
+  .cart-overlay{
+    position:fixed; inset:0; background:var(--overlay); z-index:70;
+    opacity:0; pointer-events:none; transition: opacity var(--transition-base);
+  }
+  .cart-overlay.open{ opacity:1; pointer-events:auto; }
+
+  .cart-panel{
+    position:fixed; top:0; inset-inline-end:0; height:100dvh; width:min(420px,100vw);
+    background:var(--bg-elevated); z-index:80; display:flex; flex-direction:column;
+    border-inline-start:1px solid var(--border);
+    transform:translateX(100%);
+    transition: transform var(--transition-base);
+  }
+  html[dir="rtl"] .cart-panel{ transform:translateX(-100%); }
+  .cart-panel.open{ transform:translateX(0); }
+  html[dir="rtl"] .cart-panel.open{ transform:translateX(0); }
+
+  .cart-header{ display:flex; align-items:center; justify-content:space-between; padding:18px 20px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .cart-header h2{ font-size:1.1rem; font-weight:800; }
+  .cart-close{ background:transparent; border:none; font-size:1.4rem; width:36px; height:36px; border-radius:50%; cursor:pointer; color:var(--text); }
+  .cart-close:hover{ background:var(--surface); }
+
+  .cart-body{ flex:1; overflow-y:auto; padding:14px 20px; }
+
+  .cart-empty{ text-align:center; padding:50px 10px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .cart-empty svg{ color:var(--text-muted); opacity:.5; margin-bottom:6px; }
+  .cart-empty-title{ font-weight:800; font-size:1.02rem; }
+  .cart-empty-text{ color:var(--text-muted); font-size:.86rem; max-width:30ch; }
+
+  /* ---------- LIVE ORDER TRACKER ---------- */
+  .order-tracker{
+    padding:8px 2px 4px;
+    /* Brand accent pinned to the exact spec'd hex so checkmarks/active state
+       read consistently regardless of theme; ink/surface stay theme-aware
+       (var(--text)/var(--surface)) so dark mode keeps working correctly. */
+    --tracker-accent:#F07000;
+    --tracker-accent-ink:#181212;
+  }
+  .tracker-heading{ font-size:1.05rem; font-weight:800; margin-bottom:14px; text-align:center; }
+  .tracker-meta{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:14px 16px; margin:0 0 22px; display:flex; flex-direction:column; gap:6px;
+  }
+  .tracker-meta > div{ display:flex; align-items:baseline; justify-content:space-between; gap:14px; }
+  .tracker-meta dt{ color:var(--text-muted); font-size:.82rem; }
+  .tracker-meta dd{ margin:0; font-weight:700; font-size:.86rem; }
+
+  .tracker-steps{ list-style:none; margin:0 0 26px; padding:0; }
+  .tracker-step{ position:relative; display:flex; gap:14px; padding-bottom:24px; }
+  .tracker-step:last-child{ padding-bottom:0; }
+  .tracker-step::before{
+    content:""; position:absolute; inset-inline-start:11px; top:26px; bottom:-2px; width:2px; background:var(--border);
+  }
+  .tracker-step:last-child::before{ display:none; }
+  .tracker-step.is-done::before{ background:var(--tracker-accent); }
+  .tracker-step-marker{
+    flex-shrink:0; width:24px; height:24px; border-radius:50%; z-index:1;
+    display:flex; align-items:center; justify-content:center; font-size:.72rem; font-weight:800;
+    background:var(--surface); border:2px solid var(--border); color:var(--text-muted);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  }
+  .tracker-step.is-done .tracker-step-marker{
+    background:var(--tracker-accent); border-color:var(--tracker-accent); color:var(--tracker-accent-ink);
+  }
+  .tracker-step.is-active .tracker-step-marker{
+    border-color:var(--tracker-accent); color:var(--tracker-accent);
+    box-shadow:0 0 0 4px color-mix(in srgb, var(--tracker-accent) 20%, transparent);
+  }
+  .tracker-step-body{ padding-top:1px; }
+  .tracker-step-label{ display:block; font-weight:700; font-size:.92rem; color:var(--text); }
+  .tracker-step.is-future .tracker-step-label{ color:var(--text-muted); font-weight:600; }
+  .tracker-step.is-active .tracker-step-label{ color:var(--tracker-accent); }
+  .tracker-step-time{ display:block; font-size:.78rem; color:var(--text-muted); margin-top:2px; }
+  .tracker-step.is-active .tracker-step-time{ color:var(--tracker-accent); font-weight:600; }
+
+  .tracker-terminal{ text-align:center; padding:20px 10px 30px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .tracker-terminal-icon{
+    width:48px; height:48px; border-radius:50%; background:var(--surface-alt); color:var(--text-muted);
+    border:2px solid var(--border); display:flex; align-items:center; justify-content:center;
+    font-size:1.3rem; font-weight:800; margin-bottom:4px;
+  }
+  .tracker-terminal-title{ font-size:1.05rem; font-weight:800; }
+  .tracker-terminal-text{ color:var(--text-muted); font-size:.86rem; max-width:36ch; }
+
+  .cart-item{ display:flex; align-items:center; gap:12px; padding-block:12px; border-bottom:1px solid var(--border); }
+  .cart-item:last-child{ border-bottom:none; }
+  .cart-item .dish-media{ width:56px; height:56px; border-radius:var(--radius-sm); flex-shrink:0; }
+  .cart-item-info{ flex:1; min-width:0; }
+  .cart-item-name{ font-size:.88rem; font-weight:700; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cart-item-unit{ font-size:.76rem; color:var(--text-muted); }
+  .qty-stepper{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:4px; flex-shrink:0; }
+  .qty-btn{
+    width:28px; height:28px; border-radius:50%; border:none; background:var(--surface-alt); color:var(--text);
+    font-size:1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .qty-btn:hover{ background:var(--primary); color:var(--text-on-ember); }
+  .qty-value{ min-width:18px; text-align:center; font-weight:700; font-size:.88rem; display:inline-block; }
+  .qty-value.bump{ animation: qtyBump calc(260ms * var(--motion-scale)) ease; }
+  @keyframes qtyBump{ 0%{transform:scale(1);} 50%{transform:scale(1.28);} 100%{transform:scale(1);} }
+  .cart-item-total{ font-size:.88rem; font-weight:800; min-width:64px; text-align:end; flex-shrink:0; }
+
+  .cart-footer{ border-top:1px solid var(--border); padding:16px 20px; flex-shrink:0; display:flex; flex-direction:column; gap:12px; }
+  .table-field label{ display:block; font-size:.82rem; font-weight:700; margin-bottom:6px; }
+  .table-field input{
+    width:100%; height:46px; border-radius:var(--radius-sm); border:1.5px solid var(--border);
+    background:var(--surface); color:var(--text); padding-inline:14px; font-size:.95rem;
+  }
+  .table-field input:focus{ outline:none; border-color:var(--primary); }
+  .table-field input[aria-invalid="true"]{ border-color:#E5484D; }
+  .field-error{ color:#FF6B6B; font-size:.78rem; margin-top:6px; font-weight:600; }
+  .cart-total-row{ display:flex; align-items:center; justify-content:space-between; font-weight:800; font-size:1.05rem; padding-block:2px; }
+  .checkout-btn{ width:100%; }
+  html[dir="rtl"] .checkout-btn svg{ transform:scaleX(-1); }
+
+  /* ---------- STICKY MOBILE CHECKOUT BAR ---------- */
+  .checkout-bar{
+    position:fixed; bottom:0; inset-inline:0; z-index:55;
+    padding: 10px 16px calc(10px + var(--safe-bottom));
+    display:flex; justify-content:center;
+  }
+  .checkout-bar-inner{
+    width:100%; max-width:640px; display:flex; align-items:center; gap:12px;
+    background:var(--primary); color:var(--text-on-ember); border:none; border-radius:var(--radius-md);
+    padding:14px 18px; cursor:pointer; box-shadow:var(--shadow-2); font-weight:700;
+    transition: transform var(--transition-fast);
+  }
+  .checkout-bar-inner:active{ transform:scale(.98); }
+  .checkout-bar-count{
+    background: rgba(26,18,4,.18); min-width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:.8rem; font-weight:800;
+  }
+  .checkout-bar-label{ flex:1; text-align:start; font-size:.92rem; }
+  .checkout-bar-total{ font-size:.95rem; font-weight:800; }
+
+  /* ---------- TOAST ---------- */
+  .toast{
+    position:fixed; bottom:calc(90px + var(--safe-bottom)); left:50%; z-index:90;
+    transform: translate(-50%, 16px); opacity:0; pointer-events:none;
+    background:var(--surface); color:var(--text); border:1px solid var(--border);
+    padding:12px 18px; border-radius:var(--radius-md); box-shadow:var(--shadow-2);
+    font-size:.88rem; font-weight:600; max-width:88vw;
+    transition: opacity var(--transition-base), transform var(--transition-base);
+  }
+  .toast.show{ opacity:1; transform:translate(-50%, 0); }
+
+  /* ---------- LANGUAGE TRANSITION ---------- */
+  main{ transition: opacity 160ms ease; }
+  main.lang-fade{ opacity:.35; }
+
+  /* ---------- DESKTOP LAYOUT ---------- */
+  @media (min-width: 860px){
+    .hero-inner{ grid-template-columns: 1.05fr .95fr; gap:36px; }
+    .hero-cta{ width:auto; }
+    .hero-image-frame{ aspect-ratio:4/3; }
+  }
+  @media (min-width: 1000px){
+    .dish-grid{ grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); }
+  }
+
+  /* ---------- RESPONSIVE / MOBILE SAFETY ---------- */
+  @media (max-width: 480px){
+    .container{ padding-inline:16px; }
+    .brand-status{ font-size:.7rem; }
+  }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#mainContent" data-i18n="skipToContent">Aller au contenu principal</a>
+
+<div class="app-shell">
+
+<header class="site-header" id="siteHeader">
+  <div class="header-inner container">
+    <div class="brand">
+      <!-- REAL LOGO INSERTION POINT: replace this wireframe <svg class="brand-logo-mark"> block
+           with the restaurant's actual logo (inline SVG or <img>) when customizing this template. -->
+      <svg class="brand-logo-mark" viewBox="0 0 48 48" width="40" height="40" role="img" aria-label="Ember Table">
+        <rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="none" stroke="currentColor" stroke-width="2"/>
+        <text x="24" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="currentColor" font-family="var(--font-body)">ET</text>
+      </svg>
+      <div class="brand-text">
+        <span class="brand-name">Ember Table</span>
+        <span class="brand-status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span data-i18n="openStatus">Ouvert aujourd'hui</span>&nbsp;· <span id="openHoursText">12h00–23h30</span>
+        </span>
+      </div>
+    </div>
+    <div class="header-controls">
+      <nav class="lang-switch" id="langSwitch" aria-label="Changer de langue">
+        <button type="button" class="lang-btn" data-lang="fr">FR</button>
+        <button type="button" class="lang-btn" data-lang="en">EN</button>
+        <button type="button" class="lang-btn" data-lang="ar">AR</button>
+      </nav>
+      <button type="button" class="icon-btn theme-toggle" id="themeToggle" aria-pressed="false">
+        <svg class="icon icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <svg class="icon icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="1.8"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="1.6" x2="12" y2="3.8"/><line x1="12" y1="20.2" x2="12" y2="22.4"/><line x1="1.6" y1="12" x2="3.8" y2="12"/><line x1="20.2" y1="12" x2="22.4" y2="12"/><line x1="4.3" y1="4.3" x2="5.9" y2="5.9"/><line x1="18.1" y1="18.1" x2="19.7" y2="19.7"/><line x1="4.3" y1="19.7" x2="5.9" y2="18.1"/><line x1="18.1" y1="5.9" x2="19.7" y2="4.3"/></g></svg>
+      </button>
+      <button type="button" class="icon-btn cart-btn" id="cartToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="cartPanel">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="cart-count is-zero" id="cartCount" aria-hidden="true">0</span>
+        <span class="sr-only" data-i18n="cartLabel">Panier</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="mainContent">
+
+  <section class="hero" id="heroSection">
+    <div class="hero-inner container">
+      <div class="hero-copy">
+        <p class="hero-kicker" id="heroKicker">Ouvert aujourd'hui · 12h00–23h30</p>
+        <h1 class="hero-headline" id="heroHeadline">Bonne bouffe. Meilleure humeur.</h1>
+        <p class="hero-subtext" id="heroSubtext">Saveurs fraîches, associations audacieuses et commande à table sans effort.</p>
+        <div class="hero-promo">
+          <span class="hero-promo-badge">-20%</span>
+          <span id="heroPromoText">Spicy Burger Combo — 20% offerts</span>
+        </div>
+        <div>
+          <button type="button" class="btn btn-primary hero-cta" id="heroCta" data-i18n="heroCta">Voir le menu</button>
+        </div>
+      </div>
+      <div class="hero-media">
+        <div class="hero-image-frame" id="heroImageFrame">
+          <img src="images/hero/hero-signature-dish.jpg" alt="" id="heroImage" class="hero-image">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="menu-controls" id="menuControls">
+    <div class="container">
+      <div class="search-row">
+        <label class="sr-only" for="searchInput" data-i18n="searchLabel">Rechercher un plat</label>
+        <div class="search-field">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="searchInput" class="search-input" autocomplete="off">
+          <button type="button" class="search-clear" id="searchClearBtn" hidden aria-label="Effacer la recherche">×</button>
+        </div>
+      </div>
+      <div class="filter-row" role="group" aria-label="Filtrer le menu" id="filterRow">
+        <button type="button" class="filter-chip is-active" data-filter="all" aria-pressed="true" data-i18n="filterAll">Tout</button>
+        <button type="button" class="filter-chip" data-filter="recommended" aria-pressed="false" data-i18n="filterRecommended">Recommandés</button>
+        <button type="button" class="filter-chip" data-filter="offers" aria-pressed="false" data-i18n="filterOffers">Promotions</button>
+        <button type="button" class="filter-chip" data-filter="featured" aria-pressed="false" data-i18n="filterFeatured">En vedette</button>
+      </div>
+      <div class="category-nav-wrap">
+        <nav class="category-nav" id="categoryNav" aria-label="Catégories du menu"></nav>
+      </div>
+    </div>
+  </div>
+
+  <section class="menu-section container" id="menu" aria-labelledby="menuHeading">
+    <h2 class="sr-only" id="menuHeading" data-i18n="menuTitle">Notre carte</h2>
+    <div id="menuLoading" class="no-results">
+      <p class="no-results-title" data-i18n="menuLoadingTitle">Chargement du menu…</p>
+    </div>
+    <div id="menuError" class="no-results" hidden>
+      <p class="no-results-title" data-i18n="menuErrorTitle">Menu momentanément indisponible</p>
+      <p class="no-results-text" data-i18n="menuErrorText">Merci de réessayer dans un instant.</p>
+      <button type="button" class="btn btn-secondary" id="menuRetryBtn" data-i18n="menuErrorRetry">Réessayer</button>
+    </div>
+    <div id="menuCategorized"></div>
+    <div id="menuFlatResults" class="dish-grid" hidden></div>
+    <div id="noResults" class="no-results" hidden>
+      <p class="no-results-title" data-i18n="noResultsTitle">Aucun plat trouvé</p>
+      <p class="no-results-text" data-i18n="noResultsText">Essayez un autre mot-clé ou changez de filtre.</p>
+      <button type="button" class="btn btn-secondary" id="noResultsResetBtn" data-i18n="noResultsReset">Réinitialiser la recherche</button>
+    </div>
+  </section>
+
+  <footer class="info-section" id="infoSection">
+    <div class="container info-grid">
+      <div class="info-block">
+        <h2 class="info-title">Ember Table</h2>
+        <p class="info-line"><strong data-i18n="infoAddress">Adresse</strong> — <span id="infoAddressValue"></span></p>
+        <p class="info-line"><strong data-i18n="infoHours">Horaires</strong> — <span id="infoHoursValue"></span></p>
+        <p class="info-line"><strong data-i18n="infoPhone">Téléphone</strong> — <a id="infoPhoneValue" href="#"></a></p>
+      </div>
+      <div class="info-block info-social">
+        <h3 data-i18n="infoFollow">Suivez-nous</h3>
+        <div class="social-links">
+          <a href="#" class="social-link" id="socialInstagram" rel="noopener">Instagram</a>
+          <a href="#" class="social-link" id="socialFacebook" rel="noopener">Facebook</a>
+          <a href="#" class="social-link" id="socialTiktok" rel="noopener">TikTok</a>
+        </div>
+      </div>
+    </div>
+    <p class="footer-note container" data-i18n="footerNote">Commande à table uniquement · Paiement en caisse</p>
+  </footer>
+
+</main>
+
+<div class="cart-overlay" id="cartOverlay"></div>
+
+<aside class="cart-panel" id="cartPanel" role="dialog" aria-modal="true" aria-labelledby="cartTitle" aria-hidden="true">
+  <div class="cart-header">
+    <h2 id="cartTitle" data-i18n="cartTitle">Votre commande</h2>
+    <button type="button" class="cart-close" id="cartCloseBtn" aria-label="Fermer le panier">×</button>
+  </div>
+  <div class="cart-body" id="cartBody"></div>
+  <form class="cart-footer" id="cartFooterForm">
+    <div class="table-field">
+      <label for="tableNumberInput" data-i18n="tableLabel">Numéro de table</label>
+      <input type="text" inputmode="numeric" id="tableNumberInput" aria-describedby="tableErrorMsg">
+      <p class="field-error" id="tableErrorMsg" hidden></p>
+    </div>
+    <div class="cart-total-row">
+      <span data-i18n="cartTotal">Total</span>
+      <span id="cartTotalValue">0.00 MAD</span>
+    </div>
+    <button type="submit" class="btn btn-primary checkout-btn" id="checkoutBtn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><line x1="21" y1="3" x2="10" y2="14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 3 14 21l-3-7-7-3 17-8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <span data-i18n="checkoutButton">Envoyer la commande</span>
+    </button>
+  </form>
+</aside>
+
+<div class="checkout-bar" id="checkoutBar" hidden>
+  <button type="button" class="checkout-bar-inner" id="checkoutBarBtn">
+    <span class="checkout-bar-count" id="checkoutBarCount">0</span>
+    <span class="checkout-bar-label" data-i18n="checkoutBarView">Voir la commande</span>
+    <span class="checkout-bar-total" id="checkoutBarTotal">0.00 MAD</span>
+  </button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+</div>
+
+<script>
+/* =========================================================================
+   CONFIGURATION — everything restaurant-specific lives here. Duplicating
+   this template for a new restaurant means editing this object (and the
+   MENU DATA below), never the rendering / interaction logic further down.
+   ========================================================================= */
+const restaurantConfig = {
+  name: "Ember Table",
+  logoInitials: "ET",
+  currency: "MAD",
+  whatsappNumber: "212600000000",
+  defaultLanguage: "fr",
+  defaultTheme: "dark",
+  animationIntensity: "subtle",
+  openingHours: { fr:"12h00–23h30", en:"12:00–23:30", ar:"12:00–23:30" },
+  address: {
+    fr: "12 Avenue des Saveurs, Casablanca",
+    en: "12 Avenue des Saveurs, Casablanca",
+    ar: "12 شارع النكهات، الدار البيضاء"
+  },
+  phone: "+212 6 00 00 00 00",
+  phoneHref: "tel:+212600000000",
+  social: { instagram: "#", facebook: "#", tiktok: "#" },
+  heroImage: "images/hero/hero-signature-dish.jpg",
+  colors: { carbonBlack:"#0E0F16", emberOrange:"#F28A18", toastedBrown:"#6D4934" }
+};
+
+/* =========================================================================
+   TRANSLATIONS — interface strings only. Product/category content lives in
+   MENU DATA below, each with its own {fr,en,ar}.
+   ========================================================================= */
+const translations = {
+  fr: {
+    skipToContent:"Aller au contenu principal",
+    openStatus:"Ouvert aujourd'hui",
+    langSwitchLabel:"Changer de langue",
+    langNameFr:"Français", langNameEn:"Anglais", langNameAr:"Arabe",
+    themeToLight:"Passer au thème clair", themeToDark:"Passer au thème sombre",
+    cartLabel:"Panier",
+    heroCta:"Voir le menu",
+    searchLabel:"Rechercher un plat",
+    searchPlaceholder:"Rechercher un plat, une envie…",
+    searchClear:"Effacer la recherche",
+    filterAll:"Tout", filterRecommended:"Recommandés", filterOffers:"Promotions", filterFeatured:"En vedette",
+    menuTitle:"Notre carte",
+    menuLoadingTitle:"Chargement du menu…",
+    menuErrorTitle:"Menu momentanément indisponible",
+    menuErrorText:"Merci de réessayer dans un instant.",
+    menuErrorRetry:"Réessayer",
+    badgeFeatured:"En vedette", badgeRecommended:"Recommandé", badgeOffer:"Promo",
+    soldOut:"Épuisé", addToCart:"Ajouter",
+    noResultsTitle:"Aucun plat trouvé",
+    noResultsText:"Essayez un autre mot-clé ou changez de filtre.",
+    noResultsReset:"Réinitialiser la recherche",
+    toastAdded:"{name} ajouté au panier",
+    cartTitle:"Votre commande", cartClose:"Fermer le panier",
+    cartEmptyTitle:"Votre panier est vide",
+    cartEmptyText:"Ajoutez des plats depuis le menu pour commencer votre commande.",
+    cartEmptyCta:"Voir le menu",
+    quantityDecrease:"Diminuer la quantité", quantityIncrease:"Augmenter la quantité",
+    cartTotal:"Total",
+    tableLabel:"Numéro de table", tablePlaceholder:"ex. 12",
+    tableRequired:"Merci d'indiquer votre numéro de table avant d'envoyer la commande.",
+    checkoutButton:"Envoyer la commande",
+    orderFailedError:"Impossible d'envoyer la commande. Merci de réessayer.",
+    orderRefLabel:"Référence",
+    newOrderButton:"Nouvelle commande",
+    trackerHeading:"Suivi de votre commande",
+    trackerStageReceived:"Commande reçue",
+    trackerStageConfirmed:"Confirmée",
+    trackerStagePreparing:"En préparation",
+    trackerStageReady:"Prête",
+    trackerStageCompleted:"Terminée",
+    trackerInProgress:"En cours",
+    trackerCancelledTitle:"Commande annulée",
+    trackerCancelledText:"Cette commande a été annulée. Merci de vous adresser à notre équipe pour toute question.",
+    trackerRejectedTitle:"Commande non acceptée",
+    trackerRejectedText:"Nous ne pouvons pas préparer cette commande pour le moment. Merci de vous adresser à notre équipe.",
+    checkoutBarView:"Voir la commande",
+    infoAddress:"Adresse", infoHours:"Horaires", infoPhone:"Téléphone", infoFollow:"Suivez-nous",
+    footerNote:"Commande à table uniquement · Paiement en caisse"
+  },
+  en: {
+    skipToContent:"Skip to main content",
+    openStatus:"Open today",
+    langSwitchLabel:"Change language",
+    langNameFr:"French", langNameEn:"English", langNameAr:"Arabic",
+    themeToLight:"Switch to light theme", themeToDark:"Switch to dark theme",
+    cartLabel:"Cart",
+    heroCta:"See the menu",
+    searchLabel:"Search for a dish",
+    searchPlaceholder:"Search a dish, a craving…",
+    searchClear:"Clear search",
+    filterAll:"All", filterRecommended:"Recommended", filterOffers:"Offers", filterFeatured:"Featured",
+    menuTitle:"Our menu",
+    menuLoadingTitle:"Loading the menu…",
+    menuErrorTitle:"Menu temporarily unavailable",
+    menuErrorText:"Please try again in a moment.",
+    menuErrorRetry:"Retry",
+    badgeFeatured:"Featured", badgeRecommended:"Recommended", badgeOffer:"Offer",
+    soldOut:"Sold out", addToCart:"Add",
+    noResultsTitle:"No dishes found",
+    noResultsText:"Try another keyword or change the filter.",
+    noResultsReset:"Reset search",
+    toastAdded:"{name} added to cart",
+    cartTitle:"Your order", cartClose:"Close cart",
+    cartEmptyTitle:"Your cart is empty",
+    cartEmptyText:"Add dishes from the menu to start your order.",
+    cartEmptyCta:"See the menu",
+    quantityDecrease:"Decrease quantity", quantityIncrease:"Increase quantity",
+    cartTotal:"Total",
+    tableLabel:"Table number", tablePlaceholder:"e.g. 12",
+    tableRequired:"Please enter your table number before sending the order.",
+    checkoutButton:"Send order",
+    orderFailedError:"Couldn't send your order. Please try again.",
+    orderRefLabel:"Reference",
+    newOrderButton:"Start a new order",
+    trackerHeading:"Track your order",
+    trackerStageReceived:"Order received",
+    trackerStageConfirmed:"Confirmed",
+    trackerStagePreparing:"Preparing",
+    trackerStageReady:"Ready",
+    trackerStageCompleted:"Completed",
+    trackerInProgress:"In progress",
+    trackerCancelledTitle:"Order cancelled",
+    trackerCancelledText:"This order was cancelled. Please speak to our team if you have questions.",
+    trackerRejectedTitle:"Order not accepted",
+    trackerRejectedText:"We're unable to prepare this order right now. Please speak to our team.",
+    checkoutBarView:"View order",
+    infoAddress:"Address", infoHours:"Opening hours", infoPhone:"Phone", infoFollow:"Follow us",
+    footerNote:"Dine-in orders only · Pay at the counter"
+  },
+  ar: {
+    skipToContent:"الانتقال إلى المحتوى الرئيسي",
+    openStatus:"مفتوح اليوم",
+    langSwitchLabel:"تغيير اللغة",
+    langNameFr:"الفرنسية", langNameEn:"الإنجليزية", langNameAr:"العربية",
+    themeToLight:"التبديل إلى الوضع الفاتح", themeToDark:"التبديل إلى الوضع الداكن",
+    cartLabel:"السلة",
+    heroCta:"عرض القائمة",
+    searchLabel:"البحث عن طبق",
+    searchPlaceholder:"ابحث عن طبق أو رغبة…",
+    searchClear:"مسح البحث",
+    filterAll:"الكل", filterRecommended:"موصى به", filterOffers:"عروض", filterFeatured:"مميز",
+    menuTitle:"قائمتنا",
+    menuLoadingTitle:"جاري تحميل القائمة…",
+    menuErrorTitle:"القائمة غير متوفرة مؤقتًا",
+    menuErrorText:"يرجى المحاولة مرة أخرى بعد قليل.",
+    menuErrorRetry:"إعادة المحاولة",
+    badgeFeatured:"مميز", badgeRecommended:"موصى به", badgeOffer:"عرض",
+    soldOut:"غير متوفر", addToCart:"إضافة",
+    noResultsTitle:"لم يتم العثور على أي طبق",
+    noResultsText:"جرّب كلمة أخرى أو غيّر الفلتر.",
+    noResultsReset:"إعادة تعيين البحث",
+    toastAdded:"تمت إضافة {name} إلى السلة",
+    cartTitle:"طلبك", cartClose:"إغلاق السلة",
+    cartEmptyTitle:"سلتك فارغة",
+    cartEmptyText:"أضف أطباقًا من القائمة لبدء طلبك.",
+    cartEmptyCta:"عرض القائمة",
+    quantityDecrease:"إنقاص الكمية", quantityIncrease:"زيادة الكمية",
+    cartTotal:"الإجمالي",
+    tableLabel:"رقم الطاولة", tablePlaceholder:"مثال: 12",
+    tableRequired:"يرجى إدخال رقم الطاولة قبل إرسال الطلب.",
+    checkoutButton:"إرسال الطلب",
+    orderFailedError:"تعذّر إرسال الطلب. يرجى المحاولة مرة أخرى.",
+    orderRefLabel:"المرجع",
+    newOrderButton:"طلب جديد",
+    trackerHeading:"تتبع طلبك",
+    trackerStageReceived:"تم استلام الطلب",
+    trackerStageConfirmed:"تم التأكيد",
+    trackerStagePreparing:"قيد التحضير",
+    trackerStageReady:"جاهز",
+    trackerStageCompleted:"مكتمل",
+    trackerInProgress:"قيد التنفيذ",
+    trackerCancelledTitle:"تم إلغاء الطلب",
+    trackerCancelledText:"تم إلغاء هذا الطلب. يرجى التواصل مع فريقنا لأي استفسار.",
+    trackerRejectedTitle:"لم يتم قبول الطلب",
+    trackerRejectedText:"لا يمكننا تحضير هذا الطلب حاليًا. يرجى التواصل مع فريقنا.",
+    checkoutBarView:"عرض الطلب",
+    infoAddress:"العنوان", infoHours:"ساعات العمل", infoPhone:"الهاتف", infoFollow:"تابعنا",
+    footerNote:"الطلب من الطاولة فقط · الدفع في الصندوق"
+  }
+};
+
+/* =========================================================================
+   MENU DATA — no longer hardcoded. Categories and menu items are fetched
+   live from the CMS-backed API (see FETCH LIVE DATA below) so the owner and
+   receptionist can manage everything through /admin.
+   ========================================================================= */
+let categories = [];
+let menuItems = [];
+
+/* =========================================================================
+   APPLICATION STATE
+   ========================================================================= */
+const STORAGE_KEYS = {
+  lang:"emberTable.lang", theme:"emberTable.theme", cart:"emberTable.cart",
+  table:"emberTable.table", lastOrder:"emberTable.lastOrder"
+};
+
+const state = {
+  lang: restaurantConfig.defaultLanguage,
+  theme: restaurantConfig.defaultTheme,
+  cart: [],
+  search: "",
+  filter: "all",
+  activeCategory: null,
+  cartOpen: false
+};
+
+let prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", (e)=>{ prefersReducedMotion = e.matches; });
+
+/* =========================================================================
+   LOCAL STORAGE
+   ========================================================================= */
+function saveToStorage(key, value){
+  try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){ /* storage unavailable */ }
+}
+function loadFromStorage(key, fallback){
+  try{
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  }catch(e){ return fallback; }
+}
+
+/* =========================================================================
+   UTILITIES — translation lookup, formatting, escaping
+   ========================================================================= */
+function t(key, vars){
+  let str = (translations[state.lang] && translations[state.lang][key]) || translations.en[key] || key;
+  if(vars){
+    Object.keys(vars).forEach(k=>{ str = str.replace(`{${k}}`, vars[k]); });
+  }
+  return str;
+}
+function getName(item){ return item.name[state.lang] || item.name.en; }
+function getDesc(item){ return item.description[state.lang] || item.description.en; }
+function getCatLabel(cat){ return cat.label[state.lang] || cat.label.en; }
+function formatPrice(n){ return `${n.toFixed(2)} ${restaurantConfig.currency}`; }
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+}
+function formatItemsCount(count){
+  if(state.lang === "fr") return `${count} article${count>1?"s":""}`;
+  if(state.lang === "ar") return `${count} صنف`;
+  return `${count} item${count!==1?"s":""}`;
+}
+
+/* =========================================================================
+   DOM REFERENCES
+   ========================================================================= */
+const siteHeader = document.getElementById("siteHeader");
+const menuControls = document.getElementById("menuControls");
+const heroCta = document.getElementById("heroCta");
+const heroImage = document.getElementById("heroImage");
+const heroImageFrame = document.getElementById("heroImageFrame");
+const searchInput = document.getElementById("searchInput");
+const searchClearBtn = document.getElementById("searchClearBtn");
+const filterRow = document.getElementById("filterRow");
+const categoryNavEl = document.getElementById("categoryNav");
+const menuCategorizedEl = document.getElementById("menuCategorized");
+const menuFlatResultsEl = document.getElementById("menuFlatResults");
+const noResultsEl = document.getElementById("noResults");
+const noResultsResetBtn = document.getElementById("noResultsResetBtn");
+const menuLoadingEl = document.getElementById("menuLoading");
+const menuErrorEl = document.getElementById("menuError");
+const menuRetryBtn = document.getElementById("menuRetryBtn");
+const menuSection = document.getElementById("menu");
+const langSwitch = document.getElementById("langSwitch");
+const themeToggleBtn = document.getElementById("themeToggle");
+const cartToggleBtn = document.getElementById("cartToggle");
+const cartCountEl = document.getElementById("cartCount");
+const cartOverlay = document.getElementById("cartOverlay");
+const cartPanel = document.getElementById("cartPanel");
+const cartCloseBtn = document.getElementById("cartCloseBtn");
+const cartBody = document.getElementById("cartBody");
+const cartFooterForm = document.getElementById("cartFooterForm");
+const checkoutBtn = document.getElementById("checkoutBtn");
+const tableNumberInput = document.getElementById("tableNumberInput");
+const tableErrorMsg = document.getElementById("tableErrorMsg");
+const cartTotalValueEl = document.getElementById("cartTotalValue");
+const checkoutBar = document.getElementById("checkoutBar");
+const checkoutBarBtn = document.getElementById("checkoutBarBtn");
+const checkoutBarCount = document.getElementById("checkoutBarCount");
+const checkoutBarTotal = document.getElementById("checkoutBarTotal");
+const toastEl = document.getElementById("toast");
+const mainEl = document.getElementById("mainContent");
+
+/* =========================================================================
+   FALLBACK / MEDIA MARKUP
+   ========================================================================= */
+function fallbackMarkup(item){
+  const gradId = `fbGrad-${item.id}`;
+  return `<div class="dish-fallback" aria-hidden="true">
+    <svg viewBox="0 0 120 120" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style="stop-color:var(--toasted)"/>
+          <stop offset="1" style="stop-color:var(--carbon)"/>
+        </linearGradient>
+      </defs>
+      <rect width="120" height="120" fill="url(#${gradId})"/>
+      <text x="60" y="68" text-anchor="middle" font-weight="800" font-size="30" fill="rgba(255,255,255,0.32)">${restaurantConfig.logoInitials}</text>
+    </svg>
+  </div>`;
+}
+function dishMediaMarkup(item){
+  if(item.image){
+    return `<div class="dish-media">
+      ${fallbackMarkup(item)}
+      <img class="dish-image" src="${escapeHtml(item.image)}" alt="${escapeHtml(getName(item))}" loading="lazy">
+    </div>`;
+  }
+  return `<div class="dish-media">${fallbackMarkup(item)}</div>`;
+}
+function wireImageFallbacks(container){
+  container.querySelectorAll("img.dish-image").forEach((img)=>{
+    img.addEventListener("load", ()=>{ img.classList.add("is-loaded"); });
+    if(img.complete && img.naturalWidth > 0){ img.classList.add("is-loaded"); }
+  });
+}
+
+/* =========================================================================
+   RENDERING — product cards, category sections, flat results
+   ========================================================================= */
+function createCardMarkup(item, opts){
+  const isFeatured = item.featured;
+  const badges = [];
+  if(item.featured) badges.push(`<span class="badge badge-featured">${t("badgeFeatured")}</span>`);
+  if(item.recommended) badges.push(`<span class="badge badge-recommended">${t("badgeRecommended")}</span>`);
+  if(item.discountPrice != null) badges.push(`<span class="badge badge-offer">${t("badgeOffer")}</span>`);
+  const cat = categories.find(c=>c.id === item.categoryId);
+  const catTag = (opts && opts.flat && cat) ? `<span class="dish-cat-tag">${escapeHtml(getCatLabel(cat))}</span>` : "";
+  const priceMarkup = item.discountPrice != null
+    ? `<span class="price-old">${formatPrice(item.price)}</span><span class="price-current">${formatPrice(item.discountPrice)}</span><span class="price-percent">-${Math.round((1 - item.discountPrice / item.price) * 100)}%</span>`
+    : `<span class="price-current">${formatPrice(item.price)}</span>`;
+  const unavailable = item.available === false;
+  return `<article class="dish-card ${isFeatured ? "featured" : "regular"} reveal" data-dish-id="${item.id}">
+    ${dishMediaMarkup(item)}
+    <div class="dish-content">
+      <div class="dish-badges">${badges.join("")}${catTag}</div>
+      <h4 class="dish-name">${escapeHtml(getName(item))}</h4>
+      <p class="dish-desc">${escapeHtml(getDesc(item))}</p>
+      <div class="dish-footer">
+        <div class="dish-price">${priceMarkup}</div>
+        <button type="button" class="btn btn-add ${unavailable ? "is-disabled" : ""}" data-add-id="${item.id}" ${unavailable ? "disabled aria-disabled=\"true\"" : ""}>
+          <span>${unavailable ? t("soldOut") : t("addToCart")}</span>
+        </button>
+      </div>
+    </div>
+  </article>`;
+}
+
+function createCategorySectionMarkup(cat){
+  const items = menuItems.filter(i=>i.categoryId === cat.id);
+  if(items.length === 0) return "";
+  return `<section class="category-section" id="cat-${cat.id}" data-category="${cat.id}" aria-labelledby="cat-${cat.id}-heading">
+    <h3 class="category-heading" id="cat-${cat.id}-heading">${escapeHtml(getCatLabel(cat))}</h3>
+    <div class="dish-grid">${items.map(it=>createCardMarkup(it, { flat:false })).join("")}</div>
+  </section>`;
+}
+
+let revealObserver;
+function observeReveals(nodes){
+  nodes.forEach((el, i)=>{
+    el.style.transitionDelay = prefersReducedMotion ? "0ms" : `calc(${i % 8} * var(--stagger-step))`;
+    revealObserver.observe(el);
+  });
+}
+
+function matchesSearch(item, query){
+  if(!query) return true;
+  const q = query.trim().toLowerCase();
+  if(!q) return true;
+  const cat = categories.find(c=>c.id === item.categoryId);
+  const haystack = [getName(item), getDesc(item), cat ? getCatLabel(cat) : ""].join(" ").toLowerCase();
+  return haystack.includes(q);
+}
+function matchesFilter(item, filter){
+  if(filter === "all") return true;
+  if(filter === "recommended") return !!item.recommended;
+  if(filter === "offers") return item.discountPrice != null;
+  if(filter === "featured") return !!item.featured;
+  return true;
+}
+
+let categoryObserver = null;
+function getStickyOffset(){
+  return (siteHeader ? siteHeader.offsetHeight : 0) + (menuControls ? menuControls.offsetHeight : 0);
+}
+function setupScrollSpy(){
+  if(categoryObserver){ categoryObserver.disconnect(); categoryObserver = null; }
+  const sections = menuCategorizedEl.querySelectorAll(".category-section");
+  if(!sections.length) return;
+  const offset = getStickyOffset();
+  categoryObserver = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){ setActiveCategory(entry.target.dataset.category); }
+    });
+  }, { rootMargin: `-${offset + 4}px 0px -55% 0px`, threshold: 0 });
+  sections.forEach(s=>categoryObserver.observe(s));
+}
+
+function renderMenu(){
+  const isFiltering = state.search.trim() !== "" || state.filter !== "all";
+  menuCategorizedEl.hidden = isFiltering;
+  menuFlatResultsEl.hidden = !isFiltering;
+
+  if(isFiltering){
+    if(categoryObserver){ categoryObserver.disconnect(); categoryObserver = null; }
+    clearActiveCategory();
+    const list = menuItems.filter(it=>matchesFilter(it, state.filter) && matchesSearch(it, state.search));
+    noResultsEl.hidden = list.length !== 0;
+    menuFlatResultsEl.innerHTML = list.map(it=>createCardMarkup(it, { flat:true })).join("");
+    wireImageFallbacks(menuFlatResultsEl);
+    observeReveals(menuFlatResultsEl.querySelectorAll(".dish-card"));
+  }else{
+    noResultsEl.hidden = true;
+    menuCategorizedEl.innerHTML = categories.map(cat=>createCategorySectionMarkup(cat)).join("");
+    wireImageFallbacks(menuCategorizedEl);
+    observeReveals(menuCategorizedEl.querySelectorAll(".dish-card"));
+    setupScrollSpy();
+  }
+}
+
+/* =========================================================================
+   SEARCH AND FILTERS
+   ========================================================================= */
+function updateFilterButtons(){
+  filterRow.querySelectorAll(".filter-chip").forEach(btn=>{
+    const active = btn.dataset.filter === state.filter;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-pressed", String(active));
+  });
+}
+searchInput.addEventListener("input", ()=>{
+  state.search = searchInput.value;
+  searchClearBtn.hidden = state.search.trim() === "";
+  renderMenu();
+});
+searchClearBtn.addEventListener("click", ()=>{
+  searchInput.value = "";
+  state.search = "";
+  searchClearBtn.hidden = true;
+  searchInput.focus();
+  renderMenu();
+});
+filterRow.addEventListener("click", (e)=>{
+  const btn = e.target.closest(".filter-chip");
+  if(!btn) return;
+  state.filter = btn.dataset.filter;
+  updateFilterButtons();
+  renderMenu();
+});
+noResultsResetBtn.addEventListener("click", ()=>{
+  searchInput.value = ""; state.search = ""; searchClearBtn.hidden = true;
+  state.filter = "all"; updateFilterButtons();
+  renderMenu();
+});
+
+/* =========================================================================
+   CATEGORY NAVIGATION
+   ========================================================================= */
+function renderCategoryNav(){
+  categoryNavEl.innerHTML = categories.map(cat=>
+    `<button type="button" class="category-chip" data-category="${cat.id}">${escapeHtml(getCatLabel(cat))}</button>`
+  ).join("") + `<span class="category-nav-indicator" id="categoryIndicator" aria-hidden="true"></span>`;
+}
+function setActiveCategory(catId){
+  state.activeCategory = catId;
+  const chips = categoryNavEl.querySelectorAll(".category-chip");
+  let activeBtn = null;
+  chips.forEach(btn=>{
+    const isActive = btn.dataset.category === catId;
+    btn.classList.toggle("is-active", isActive);
+    if(isActive) activeBtn = btn;
+  });
+  const indicator = document.getElementById("categoryIndicator");
+  if(activeBtn && indicator){
+    indicator.style.opacity = "1";
+    indicator.style.width = `${activeBtn.offsetWidth}px`;
+    indicator.style.transform = `translateX(${activeBtn.offsetLeft}px)`;
+    activeBtn.scrollIntoView({ block:"nearest", inline:"center", behavior: prefersReducedMotion ? "auto" : "smooth" });
+  }
+}
+function clearActiveCategory(){
+  state.activeCategory = null;
+  categoryNavEl.querySelectorAll(".category-chip").forEach(btn=>btn.classList.remove("is-active"));
+  const indicator = document.getElementById("categoryIndicator");
+  if(indicator){ indicator.style.opacity = "0"; }
+}
+function scrollToElement(el){
+  if(!el) return;
+  const offset = getStickyOffset();
+  const top = el.getBoundingClientRect().top + window.scrollY - offset - 14;
+  window.scrollTo({ top, behavior: prefersReducedMotion ? "auto" : "smooth" });
+}
+categoryNavEl.addEventListener("click", (e)=>{
+  const btn = e.target.closest(".category-chip");
+  if(!btn) return;
+  const catId = btn.dataset.category;
+  if(state.search.trim() !== "" || state.filter !== "all"){
+    state.search = ""; searchInput.value = ""; searchClearBtn.hidden = true;
+    state.filter = "all"; updateFilterButtons();
+    renderMenu();
+  }
+  const target = document.getElementById(`cat-${catId}`);
+  scrollToElement(target);
+});
+heroCta.addEventListener("click", ()=>{ scrollToElement(menuSection); });
+
+/* =========================================================================
+   CART
+   ========================================================================= */
+function persistCart(){ saveToStorage(STORAGE_KEYS.cart, state.cart); }
+
+function addToCart(id){
+  const item = menuItems.find(m=>m.id === id);
+  if(!item || item.available === false) return;
+  const existing = state.cart.find(c=>c.id === id);
+  if(existing) existing.qty += 1; else state.cart.push({ id, qty:1 });
+  persistCart();
+  updateCartUI();
+  bumpCartCount();
+  showToast(t("toastAdded", { name: getName(item) }));
+}
+function changeQty(id, delta){
+  const line = state.cart.find(c=>c.id === id);
+  if(!line) return;
+  line.qty += delta;
+  if(line.qty <= 0){ state.cart = state.cart.filter(c=>c.id !== id); }
+  persistCart();
+  updateCartUI();
+}
+function cartLines(){
+  return state.cart.map(c=>{
+    const item = menuItems.find(m=>m.id === c.id);
+    if(!item) return null;
+    const unit = item.discountPrice != null ? item.discountPrice : item.price;
+    return { item, qty: c.qty, unit, lineTotal: unit * c.qty };
+  }).filter(Boolean);
+}
+function cartTotals(){
+  const lines = cartLines();
+  const count = lines.reduce((s,l)=>s + l.qty, 0);
+  const total = lines.reduce((s,l)=>s + l.lineTotal, 0);
+  return { count, total, lines };
+}
+function bumpCartCount(){
+  cartCountEl.classList.remove("bump");
+  void cartCountEl.offsetWidth;
+  cartCountEl.classList.add("bump");
+}
+function renderCartBody(lines){
+  if(lines.length === 0){
+    const savedOrder = loadFromStorage(STORAGE_KEYS.lastOrder, null);
+    if(savedOrder && savedOrder.ref && !TRACKER_TERMINAL_STATUSES.includes(savedOrder.status)){
+      startOrderTrackerPolling(savedOrder.ref);
+      return;
+    }
+    stopOrderTrackerPolling();
+    cartFooterForm.hidden = false;
+    cartBody.innerHTML = `<div class="cart-empty">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <p class="cart-empty-title">${t("cartEmptyTitle")}</p>
+      <p class="cart-empty-text">${t("cartEmptyText")}</p>
+      <button type="button" class="btn btn-secondary" id="cartEmptyCtaBtn">${t("cartEmptyCta")}</button>
+    </div>`;
+    const cta = document.getElementById("cartEmptyCtaBtn");
+    if(cta) cta.addEventListener("click", ()=>{ closeCart(); scrollToElement(menuSection); });
+    return;
+  }
+  stopOrderTrackerPolling();
+  cartFooterForm.hidden = false;
+  cartBody.innerHTML = lines.map(l=>`
+    <div class="cart-item" data-cart-id="${l.item.id}">
+      ${dishMediaMarkup(l.item)}
+      <div class="cart-item-info">
+        <p class="cart-item-name">${escapeHtml(getName(l.item))}</p>
+        <p class="cart-item-unit">${formatPrice(l.unit)}</p>
+      </div>
+      <div class="qty-stepper">
+        <button type="button" class="qty-btn" data-qty-action="dec" aria-label="${t("quantityDecrease")}">−</button>
+        <span class="qty-value">${l.qty}</span>
+        <button type="button" class="qty-btn" data-qty-action="inc" aria-label="${t("quantityIncrease")}">+</button>
+      </div>
+      <p class="cart-item-total">${formatPrice(l.lineTotal)}</p>
+    </div>
+  `).join("");
+  wireImageFallbacks(cartBody);
+}
+function updateCartUI(){
+  const { count, total, lines } = cartTotals();
+  cartCountEl.textContent = String(count);
+  cartCountEl.classList.toggle("is-zero", count === 0);
+  renderCartBody(lines);
+  cartTotalValueEl.textContent = formatPrice(total);
+  checkoutBarCount.textContent = String(count);
+  checkoutBarTotal.textContent = formatPrice(total);
+  checkoutBar.hidden = count === 0 || state.cartOpen;
+}
+cartBody.addEventListener("click", (e)=>{
+  const btn = e.target.closest(".qty-btn");
+  if(!btn) return;
+  const row = btn.closest(".cart-item");
+  const id = row && row.dataset.cartId;
+  if(!id) return;
+  changeQty(id, btn.dataset.qtyAction === "inc" ? 1 : -1);
+  const valueEl = row.querySelector(".qty-value");
+  if(valueEl){ valueEl.classList.remove("bump"); void valueEl.offsetWidth; valueEl.classList.add("bump"); }
+});
+
+let lastFocusedBeforeCart = null;
+let scrollLockY = 0;
+function lockBodyScroll(){
+  scrollLockY = window.scrollY;
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${scrollLockY}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.classList.add("scroll-locked");
+}
+function unlockBodyScroll(){
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.classList.remove("scroll-locked");
+  window.scrollTo(0, scrollLockY);
+}
+function onCartKeydown(e){ if(e.key === "Escape") closeCart(); }
+function openCart(){
+  state.cartOpen = true;
+  lastFocusedBeforeCart = document.activeElement;
+  cartOverlay.classList.add("open");
+  cartPanel.classList.add("open");
+  cartPanel.setAttribute("aria-hidden", "false");
+  cartToggleBtn.setAttribute("aria-expanded", "true");
+  lockBodyScroll();
+  checkoutBar.hidden = true;
+  document.addEventListener("keydown", onCartKeydown);
+  window.setTimeout(()=>{ cartCloseBtn.focus(); }, prefersReducedMotion ? 0 : 80);
+}
+function closeCart(){
+  state.cartOpen = false;
+  cartOverlay.classList.remove("open");
+  cartPanel.classList.remove("open");
+  cartPanel.setAttribute("aria-hidden", "true");
+  cartToggleBtn.setAttribute("aria-expanded", "false");
+  unlockBodyScroll();
+  updateCartUI();
+  document.removeEventListener("keydown", onCartKeydown);
+  if(lastFocusedBeforeCart && typeof lastFocusedBeforeCart.focus === "function") lastFocusedBeforeCart.focus();
+}
+cartToggleBtn.addEventListener("click", ()=>{ state.cartOpen ? closeCart() : openCart(); });
+cartCloseBtn.addEventListener("click", closeCart);
+cartOverlay.addEventListener("click", closeCart);
+checkoutBarBtn.addEventListener("click", openCart);
+
+menuSection.addEventListener("click", (e)=>{
+  const addBtn = e.target.closest(".btn-add");
+  if(!addBtn || addBtn.disabled) return;
+  addToCart(addBtn.dataset.addId);
+});
+
+/* =========================================================================
+   DIRECT ORDER CHECKOUT + LIVE ORDER TRACKER — submits the cart to the CMS
+   (POST /api/orders) instead of opening WhatsApp, then polls GET
+   /api/orders/:ref so the customer sees kitchen status updates (received →
+   confirmed → preparing → ready → completed, or cancelled/rejected) without
+   ever refreshing. True push-based updates (Supabase Realtime) are a planned
+   drop-in swap for this polling transport — the rendering code below won't
+   need to change when that lands.
+   ========================================================================= */
+const TRACKER_STAGES = ["received", "confirmed", "preparing", "ready", "completed"];
+const TRACKER_STAGE_KEYS = {
+  received: "trackerStageReceived", confirmed: "trackerStageConfirmed", preparing: "trackerStagePreparing",
+  ready: "trackerStageReady", completed: "trackerStageCompleted"
+};
+const TRACKER_TERMINAL_STATUSES = ["completed", "cancelled", "rejected"];
+const ORDER_TRACKER_POLL_MS = 4000;
+let orderTrackerPollTimer = null;
+let activeTrackerRef = null;
+
+function trackerStageState(order, stageKey){
+  if(order.status === "completed") return "done";
+  const currentIndex = TRACKER_STAGES.indexOf(order.status);
+  const stageIndex = TRACKER_STAGES.indexOf(stageKey);
+  if(currentIndex === -1) return "future";
+  if(stageIndex < currentIndex) return "done";
+  if(stageIndex === currentIndex) return "active";
+  return "future";
+}
+function historyTimeFor(order, stageKey){
+  const entry = order.history && order.history.find(h=>h.status === stageKey);
+  if(!entry) return "";
+  const d = parseServerDate(entry.at);
+  return d.toLocaleTimeString(state.lang === "fr" ? "fr-FR" : state.lang === "ar" ? "ar" : "en-GB", { hour:"2-digit", minute:"2-digit" });
+}
+function parseServerDate(s){
+  return new Date(s.includes("T") ? s : `${s.replace(" ", "T")}Z`);
+}
+
+function renderOrderTracker(order){
+  cartFooterForm.hidden = true;
+  const isTerminalNegative = order.status === "cancelled" || order.status === "rejected";
+
+  const metaHtml = `
+    <dl class="tracker-meta">
+      <div><dt>${t("orderRefLabel")}</dt><dd>${escapeHtml(order.ref)}</dd></div>
+      <div><dt>${t("tableLabel")}</dt><dd>${escapeHtml(order.table)}</dd></div>
+      <div><dt>${t("cartTotal")}</dt><dd>${formatPrice(order.total)}</dd></div>
+    </dl>
+  `;
+
+  let bodyHtml;
+  if(isTerminalNegative){
+    const titleKey = order.status === "rejected" ? "trackerRejectedTitle" : "trackerCancelledTitle";
+    const textKey = order.status === "rejected" ? "trackerRejectedText" : "trackerCancelledText";
+    bodyHtml = `
+      <div class="tracker-terminal">
+        <div class="tracker-terminal-icon" aria-hidden="true">✕</div>
+        <p class="tracker-terminal-title">${t(titleKey)}</p>
+        <p class="tracker-terminal-text">${t(textKey)}</p>
+      </div>
+    `;
+  }else{
+    bodyHtml = `
+      <ol class="tracker-steps">
+        ${TRACKER_STAGES.map(stageKey=>{
+          const stageState = trackerStageState(order, stageKey);
+          const time = historyTimeFor(order, stageKey);
+          const marker = stageState === "done" ? "✓" : "";
+          const sub = stageState === "done" ? time : (stageState === "active" ? t("trackerInProgress") : "");
+          return `
+            <li class="tracker-step is-${stageState}">
+              <span class="tracker-step-marker" aria-hidden="true">${marker}</span>
+              <span class="tracker-step-body">
+                <span class="tracker-step-label">${t(TRACKER_STAGE_KEYS[stageKey])}</span>
+                ${sub ? `<span class="tracker-step-time">${escapeHtml(sub)}</span>` : ""}
+              </span>
+            </li>
+          `;
+        }).join("")}
+      </ol>
+    `;
+  }
+
+  cartBody.innerHTML = `
+    <div class="order-tracker" role="status" aria-live="polite">
+      <p class="tracker-heading">${t("trackerHeading")}</p>
+      ${metaHtml}
+      ${bodyHtml}
+      <button type="button" class="btn btn-secondary btn-block" id="newOrderBtn">${t("newOrderButton")}</button>
+    </div>
+  `;
+  const newOrderBtn = document.getElementById("newOrderBtn");
+  if(newOrderBtn){
+    newOrderBtn.addEventListener("click", ()=>{
+      saveToStorage(STORAGE_KEYS.lastOrder, null);
+      stopOrderTrackerPolling();
+      updateCartUI();
+    });
+  }
+}
+
+async function fetchAndRenderOrderTracker(ref){
+  try{
+    const res = await fetch(`/api/orders/${encodeURIComponent(ref)}`);
+    if(!res.ok) throw new Error("not_found");
+    const order = await res.json();
+    saveToStorage(STORAGE_KEYS.lastOrder, order);
+    renderOrderTracker(order);
+    if(TRACKER_TERMINAL_STATUSES.includes(order.status)) stopOrderTrackerPolling();
+  }catch(e){
+    stopOrderTrackerPolling();
+  }
+}
+function startOrderTrackerPolling(ref){
+  if(activeTrackerRef === ref && orderTrackerPollTimer) return; // already tracking this exact order
+  stopOrderTrackerPolling();
+  activeTrackerRef = ref;
+  fetchAndRenderOrderTracker(ref);
+  orderTrackerPollTimer = window.setInterval(()=>fetchAndRenderOrderTracker(ref), ORDER_TRACKER_POLL_MS);
+}
+function stopOrderTrackerPolling(){
+  if(orderTrackerPollTimer){ window.clearInterval(orderTrackerPollTimer); orderTrackerPollTimer = null; }
+  activeTrackerRef = null;
+}
+
+async function handleCheckout(){
+  const tableVal = tableNumberInput.value.trim();
+  if(!tableVal){
+    tableErrorMsg.hidden = false;
+    tableErrorMsg.textContent = t("tableRequired");
+    tableNumberInput.setAttribute("aria-invalid", "true");
+    tableNumberInput.focus();
+    return;
+  }
+  tableErrorMsg.hidden = true;
+  tableNumberInput.removeAttribute("aria-invalid");
+  saveToStorage(STORAGE_KEYS.table, tableVal);
+
+  if(state.cart.length === 0) return;
+
+  checkoutBtn.disabled = true;
+  try{
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        table: tableVal,
+        lang: state.lang,
+        items: state.cart.map(c=>({ id:c.id, qty:c.qty }))
+      })
+    });
+    const data = await res.json().catch(()=>null);
+    if(!res.ok || !data) throw new Error((data && data.message) || "order_failed");
+
+    state.cart = [];
+    persistCart();
+    saveToStorage(STORAGE_KEYS.lastOrder, data); // so the empty-cart render below finds it and goes straight to the tracker
+    updateCartUI();
+  }catch(e){
+    tableErrorMsg.hidden = false;
+    tableErrorMsg.textContent = t("orderFailedError");
+  }finally{
+    checkoutBtn.disabled = false;
+  }
+}
+cartFooterForm.addEventListener("submit", (e)=>{ e.preventDefault(); handleCheckout(); });
+tableNumberInput.addEventListener("input", ()=>{
+  state.table = tableNumberInput.value;
+  saveToStorage(STORAGE_KEYS.table, state.table);
+  if(state.table.trim() !== ""){ tableErrorMsg.hidden = true; tableNumberInput.removeAttribute("aria-invalid"); }
+});
+
+/* =========================================================================
+   LANGUAGE AND THEME
+   ========================================================================= */
+function applyTranslations(){
+  document.querySelectorAll("[data-i18n]").forEach(el=>{
+    el.textContent = t(el.getAttribute("data-i18n"));
+  });
+  document.title = `${restaurantConfig.name} — ${state.lang === "ar" ? "قائمة رقمية" : state.lang === "en" ? "Digital menu" : "Menu digital"}`;
+  searchInput.setAttribute("placeholder", t("searchPlaceholder"));
+  searchClearBtn.setAttribute("aria-label", t("searchClear"));
+  tableNumberInput.setAttribute("placeholder", t("tablePlaceholder"));
+  langSwitch.setAttribute("aria-label", t("langSwitchLabel"));
+  cartCloseBtn.setAttribute("aria-label", t("cartClose"));
+  themeToggleBtn.setAttribute("aria-label", state.theme === "dark" ? t("themeToLight") : t("themeToDark"));
+
+  document.getElementById("openHoursText").textContent = restaurantConfig.openingHours[state.lang] || restaurantConfig.openingHours.en;
+  document.getElementById("heroKicker").textContent = `${t("openStatus")} · ${restaurantConfig.openingHours[state.lang] || restaurantConfig.openingHours.en}`;
+  const heroHeadlines = { fr:"Bonne bouffe. Meilleure humeur.", en:"Good food. Better mood.", ar:"طعام شهي. مزاج أفضل." };
+  const heroSubtexts = {
+    fr:"Saveurs fraîches, associations audacieuses et commande à table sans effort.",
+    en:"Fresh flavours, bold combinations, and effortless table ordering.",
+    ar:"نكهات طازجة، تركيبات جريئة، وطلب سهل من الطاولة."
+  };
+  const heroPromos = {
+    fr:"Spicy Burger Combo — 20% offerts",
+    en:"Spicy Burger Combo — 20% OFF",
+    ar:"سبايسي برغر كومبو — خصم 20%"
+  };
+  document.getElementById("heroHeadline").textContent = heroHeadlines[state.lang] || heroHeadlines.en;
+  document.getElementById("heroSubtext").textContent = heroSubtexts[state.lang] || heroSubtexts.en;
+  document.getElementById("heroPromoText").textContent = heroPromos[state.lang] || heroPromos.en;
+  heroImage.setAttribute("alt", state.lang === "ar" ? "طبق مميز من إمبر تيبل" : (state.lang === "en" ? "Ember Table signature dish" : "Assiette signature Ember Table"));
+
+  document.getElementById("infoAddressValue").textContent = restaurantConfig.address[state.lang] || restaurantConfig.address.en;
+  document.getElementById("infoHoursValue").textContent = restaurantConfig.openingHours[state.lang] || restaurantConfig.openingHours.en;
+  const phoneEl = document.getElementById("infoPhoneValue");
+  phoneEl.textContent = restaurantConfig.phone;
+  phoneEl.setAttribute("href", restaurantConfig.phoneHref);
+  document.getElementById("socialInstagram").setAttribute("href", restaurantConfig.social.instagram);
+  document.getElementById("socialFacebook").setAttribute("href", restaurantConfig.social.facebook);
+  document.getElementById("socialTiktok").setAttribute("href", restaurantConfig.social.tiktok);
+}
+function updateLangButtons(){
+  langSwitch.querySelectorAll(".lang-btn").forEach(btn=>{
+    const active = btn.dataset.lang === state.lang;
+    btn.classList.toggle("is-active", active);
+    if(active) btn.setAttribute("aria-current", "true"); else btn.removeAttribute("aria-current");
+    const nameKey = "langName" + btn.dataset.lang.charAt(0).toUpperCase() + btn.dataset.lang.slice(1);
+    btn.setAttribute("aria-label", t(nameKey));
+  });
+}
+function setLanguage(lang){
+  state.lang = lang;
+  document.documentElement.setAttribute("lang", lang);
+  document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+  saveToStorage(STORAGE_KEYS.lang, lang);
+  applyTranslations();
+  renderCategoryNav();
+  updateFilterButtons();
+  renderMenu();
+  updateCartUI();
+  updateLangButtons();
+}
+function setLanguageWithTransition(lang){
+  if(lang === state.lang) return;
+  if(prefersReducedMotion){ setLanguage(lang); return; }
+  mainEl.classList.add("lang-fade");
+  window.setTimeout(()=>{
+    setLanguage(lang);
+    requestAnimationFrame(()=>{ mainEl.classList.remove("lang-fade"); });
+  }, 130);
+}
+langSwitch.addEventListener("click", (e)=>{
+  const btn = e.target.closest(".lang-btn");
+  if(!btn) return;
+  setLanguageWithTransition(btn.dataset.lang);
+});
+
+function setTheme(theme){
+  state.theme = theme;
+  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.style.colorScheme = theme;
+  themeToggleBtn.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+  themeToggleBtn.setAttribute("aria-label", theme === "dark" ? t("themeToLight") : t("themeToDark"));
+  saveToStorage(STORAGE_KEYS.theme, theme);
+}
+themeToggleBtn.addEventListener("click", ()=>{ setTheme(state.theme === "dark" ? "light" : "dark"); });
+
+/* =========================================================================
+   TOAST (aria-live add-to-cart feedback)
+   ========================================================================= */
+let toastTimer = null;
+function showToast(message){
+  toastEl.textContent = message;
+  toastEl.classList.add("show");
+  if(toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(()=>{ toastEl.classList.remove("show"); }, 2200);
+}
+
+/* =========================================================================
+   ANIMATIONS — header scroll state, reveal observer bootstrap
+   ========================================================================= */
+function updateHeaderScrollState(){
+  siteHeader.classList.toggle("is-scrolled", window.scrollY > 8);
+}
+window.addEventListener("scroll", updateHeaderScrollState, { passive:true });
+window.addEventListener("resize", ()=>{ if(!state.cartOpen) setupScrollSpy(); });
+
+/* =========================================================================
+   FETCH LIVE DATA — categories/menu items and the CMS-editable restaurant
+   info fields (hours, address, phone, WhatsApp number, socials) are managed
+   by the owner/receptionist through /admin and stored server-side. Branding
+   (name, logo, colors, hero image, default language/theme) stays in
+   restaurantConfig above — that part of the template isn't CMS-managed.
+   ========================================================================= */
+async function fetchMenuData(){
+  const res = await fetch("/api/menu");
+  if(!res.ok) throw new Error("menu_fetch_failed");
+  const data = await res.json();
+  categories = data.categories;
+  menuItems = data.items;
+}
+async function fetchRestaurantInfo(){
+  try{
+    const res = await fetch("/api/restaurant-info");
+    if(!res.ok) throw new Error("info_fetch_failed");
+    const info = await res.json();
+    restaurantConfig.whatsappNumber = info.whatsappNumber;
+    restaurantConfig.openingHours = info.openingHours;
+    restaurantConfig.address = info.address;
+    restaurantConfig.phone = info.phone;
+    restaurantConfig.phoneHref = info.phoneHref;
+    restaurantConfig.social = info.social;
+  }catch(e){
+    // Non-fatal: keep the built-in defaults so contact details/checkout still work
+    // even if this one call fails; only the menu itself is treated as critical.
+    console.warn("Falling back to built-in restaurant info:", e);
+  }
+}
+
+/* =========================================================================
+   INIT
+   ========================================================================= */
+async function loadAndRenderMenu(){
+  menuErrorEl.hidden = true;
+  menuLoadingEl.hidden = false;
+  menuCategorizedEl.hidden = true;
+  try{
+    await Promise.all([fetchMenuData(), fetchRestaurantInfo()]);
+    const savedCart = loadFromStorage(STORAGE_KEYS.cart, []);
+    state.cart = Array.isArray(savedCart) ? savedCart.filter(c=>menuItems.some(m=>m.id === c.id)) : [];
+
+    menuLoadingEl.hidden = true;
+    applyTranslations();
+    renderCategoryNav();
+    updateFilterButtons();
+    renderMenu();
+    updateCartUI();
+  }catch(e){
+    console.error("Could not load the menu:", e);
+    menuLoadingEl.hidden = true;
+    menuErrorEl.hidden = false;
+  }
+}
+menuRetryBtn.addEventListener("click", loadAndRenderMenu);
+
+function init(){
+  revealObserver = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){ entry.target.classList.add("is-visible"); revealObserver.unobserve(entry.target); }
+    });
+  }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+
+  document.documentElement.setAttribute("data-motion", restaurantConfig.animationIntensity);
+
+  const savedLang = loadFromStorage(STORAGE_KEYS.lang, restaurantConfig.defaultLanguage);
+  const savedTheme = loadFromStorage(STORAGE_KEYS.theme, restaurantConfig.defaultTheme);
+  const savedTable = loadFromStorage(STORAGE_KEYS.table, "");
+
+  state.lang = savedLang;
+  state.theme = savedTheme;
+
+  document.documentElement.setAttribute("lang", state.lang);
+  document.documentElement.setAttribute("dir", state.lang === "ar" ? "rtl" : "ltr");
+  document.documentElement.setAttribute("data-theme", state.theme);
+  document.documentElement.style.colorScheme = state.theme;
+
+  tableNumberInput.value = savedTable || "";
+
+  applyTranslations();
+  updateLangButtons();
+  themeToggleBtn.setAttribute("aria-label", state.theme === "dark" ? t("themeToLight") : t("themeToDark"));
+  themeToggleBtn.setAttribute("aria-pressed", state.theme === "light" ? "true" : "false");
+
+  heroImage.addEventListener("error", ()=>{
+    heroImageFrame.innerHTML = `<div class="hero-fallback"><span class="fallback-mono">${restaurantConfig.logoInitials}</span></div>`;
+  });
+  heroImage.setAttribute("src", restaurantConfig.heroImage);
+
+  updateHeaderScrollState();
+
+  loadAndRenderMenu();
+}
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>

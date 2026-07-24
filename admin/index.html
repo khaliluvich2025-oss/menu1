@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ember Table — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <form id="loginForm" class="login-card" novalidate>
+    <div class="login-logo">ET</div>
+    <h1>Ember Table CMS</h1>
+    <p class="login-sub">Sign in to manage the menu and restaurant info.</p>
+    <label class="field">
+      <span>Username</span>
+      <input type="text" id="loginUsername" autocomplete="username" required>
+    </label>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+    </label>
+    <p class="form-error" id="loginError" hidden></p>
+    <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+  </form>
+</div>
+
+<div id="appScreen" class="app-screen" hidden>
+  <header class="admin-header">
+    <div class="admin-brand"><span class="logo-mark" aria-hidden="true">ET</span> Ember Table CMS</div>
+    <nav class="admin-nav" id="adminNav">
+      <button type="button" data-view="orders" class="nav-btn is-active">
+        Orders <span class="nav-badge" id="ordersBadge" hidden>0</span>
+      </button>
+      <button type="button" data-view="stats" class="nav-btn">Dashboard</button>
+      <button type="button" data-view="menu" class="nav-btn">Menu items</button>
+      <button type="button" data-view="categories" class="nav-btn">Categories</button>
+      <button type="button" data-view="info" class="nav-btn">Restaurant info</button>
+    </nav>
+    <div class="admin-user">
+      <span class="user-pill" id="userLabel"></span>
+      <button type="button" class="btn btn-ghost" id="changePasswordBtn">Change password</button>
+      <button type="button" class="btn btn-ghost" id="logoutBtn">Log out</button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <section id="view-orders" class="admin-view">
+      <div class="view-toolbar">
+        <h2>Orders</h2>
+        <label class="field-check auto-refresh-toggle">
+          <input type="checkbox" id="ordersAutoRefresh" checked> Auto-refresh
+        </label>
+      </div>
+      <p class="form-hint" id="ordersEmptyHint" hidden>No orders yet. New orders placed from the menu will show up here automatically.</p>
+      <div id="ordersContainer" class="orders-list"></div>
+    </section>
+
+    <section id="view-stats" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2>Dashboard</h2>
+        <div class="view-toolbar-actions">
+          <label class="field-check auto-refresh-toggle">
+            <input type="checkbox" id="statsAutoRefresh" checked> Auto-refresh
+          </label>
+          <button type="button" class="btn btn-ghost" id="statsExportBtn">Export CSV</button>
+        </div>
+      </div>
+
+      <div class="stats-filter-bar">
+        <div class="filter-presets" id="statsPresets" role="group" aria-label="Date range">
+          <button type="button" class="btn btn-ghost btn-small is-active" data-preset="today">Today</button>
+          <button type="button" class="btn btn-ghost btn-small" data-preset="week">This week</button>
+          <button type="button" class="btn btn-ghost btn-small" data-preset="month">This month</button>
+          <button type="button" class="btn btn-ghost btn-small" data-preset="custom">Custom range</button>
+        </div>
+        <div class="filter-custom-range" id="statsCustomRange" hidden>
+          <input type="date" id="statsCustomStart" aria-label="Custom range start">
+          <span aria-hidden="true">–</span>
+          <input type="date" id="statsCustomEnd" aria-label="Custom range end">
+          <button type="button" class="btn btn-primary btn-small" id="statsCustomApply">Apply</button>
+        </div>
+        <select id="statsStatusFilter" class="filter-select" aria-label="Filter by order status">
+          <option value="">All statuses</option>
+          <option value="new">Pending</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <p class="form-hint stats-note">Dine-in is the only order type this menu supports, so there's no order-type filter to show yet.</p>
+
+      <div class="today-pulse" id="statsTodayCard" aria-live="polite"></div>
+
+      <div class="kpi-grid" id="statsKpiGrid"></div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>Revenue over time</h3>
+          <div class="chart-body" id="chartRevenueTime"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Orders over time</h3>
+          <div class="chart-body" id="chartOrdersTime"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Best-selling products</h3>
+          <div class="chart-body" id="chartBestSellers"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Top categories</h3>
+          <div class="chart-body" id="chartTopCategories"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Busiest hours</h3>
+          <div class="chart-body" id="chartBusiestHours"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Order status distribution</h3>
+          <div class="chart-body" id="chartStatusDistribution"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-menu" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2>Menu items</h2>
+        <button type="button" class="btn btn-primary" id="addDishBtn">+ Add dish</button>
+      </div>
+      <div id="menuItemsContainer" class="items-by-category"></div>
+    </section>
+
+    <section id="view-categories" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2>Categories</h2>
+        <button type="button" class="btn btn-primary" id="addCategoryBtn">+ Add category</button>
+      </div>
+      <div id="categoriesContainer" class="category-list"></div>
+    </section>
+
+    <section id="view-info" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2>Restaurant info</h2>
+      </div>
+      <form id="restaurantInfoForm" class="panel-card form-grid">
+        <p class="form-hint">Branding, colors, logo, and default language/theme are set in the code template and aren't editable here.</p>
+
+        <label class="field">
+          <span>WhatsApp number (digits only, country code first)</span>
+          <input type="text" id="infoWhatsapp" placeholder="212600000000" required>
+        </label>
+        <label class="field">
+          <span>Phone (displayed)</span>
+          <input type="text" id="infoPhone" placeholder="+212 6 00 00 00 00">
+        </label>
+        <label class="field">
+          <span>Phone link (tel:)</span>
+          <input type="text" id="infoPhoneHref" placeholder="tel:+212600000000">
+        </label>
+
+        <fieldset class="field-group">
+          <legend>Opening hours</legend>
+          <label class="field"><span>French</span><input type="text" id="infoHoursFr"></label>
+          <label class="field"><span>English</span><input type="text" id="infoHoursEn"></label>
+          <label class="field"><span>Arabic</span><input type="text" id="infoHoursAr" dir="rtl"></label>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend>Address</legend>
+          <label class="field"><span>French</span><input type="text" id="infoAddressFr"></label>
+          <label class="field"><span>English</span><input type="text" id="infoAddressEn"></label>
+          <label class="field"><span>Arabic</span><input type="text" id="infoAddressAr" dir="rtl"></label>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend>Social links</legend>
+          <label class="field"><span>Instagram URL</span><input type="text" id="infoInstagram"></label>
+          <label class="field"><span>Facebook URL</span><input type="text" id="infoFacebook"></label>
+          <label class="field"><span>TikTok URL</span><input type="text" id="infoTiktok"></label>
+        </fieldset>
+
+        <p class="form-error" id="infoError" hidden></p>
+        <button type="submit" class="btn btn-primary">Save restaurant info</button>
+      </form>
+    </section>
+  </main>
+</div>
+
+<div id="modalRoot"></div>
+<div class="admin-toast" id="adminToast" role="status" aria-live="polite"></div>
+
+<script src="/admin/admin.js"></script>
+</body>
+</html>
