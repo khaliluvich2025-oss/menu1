@@ -1,5 +1,5 @@
 const express = require("express");
-const db = require("../db");
+const { ensureReady } = require("../db");
 const { requireOwner } = require("../middleware");
 const { ALL_STATUSES, NON_REVENUE_STATUSES } = require("./orders");
 
@@ -12,31 +12,16 @@ const PENDING_STATUSES = new Set(["received", "confirmed", "preparing", "ready"]
 
 // This deployment is single-tenant (one `orders`/`menu_items` set per restaurant
 // install), so "restaurant-level isolation" is inherent to the deployment model —
-// there is no shared multi-tenant table here that would need a restaurant_id scope.
+// there is no shared multi-tenant collection here that would need a restaurant_id scope.
 
 function pad(n) { return String(n).padStart(2, "0"); }
 function round2(n) { return Math.round(n * 100) / 100; }
 
-function parseDbDate(s) {
-  return new Date(s.includes("T") ? s : `${s.replace(" ", "T")}Z`);
-}
-function toDbDateString(d) {
-  return d.toISOString().slice(0, 19).replace("T", " ");
-}
-
-function fetchOrders(rangeStart, rangeEnd, statusFilter) {
-  let sql = "SELECT * FROM orders WHERE created_at >= ? AND created_at < ?";
-  const params = [toDbDateString(rangeStart), toDbDateString(rangeEnd)];
-  if (statusFilter) {
-    sql += " AND status = ?";
-    params.push(statusFilter);
-  }
-  sql += " ORDER BY created_at ASC";
-  return db.prepare(sql).all(...params).map((row) => ({
-    ...row,
-    items: JSON.parse(row.items_json),
-    createdAtDate: parseDbDate(row.created_at)
-  }));
+async function fetchOrders(db, rangeStart, rangeEnd, statusFilter) {
+  const query = { createdAt: { $gte: rangeStart, $lt: rangeEnd } };
+  if (statusFilter) query.status = statusFilter;
+  const docs = await db.collection("orders").find(query).sort({ createdAt: 1 }).toArray();
+  return docs.map((doc) => ({ ...doc, createdAtDate: doc.createdAt }));
 }
 
 function summarize(orders) {
@@ -84,18 +69,20 @@ function parseRangeParams(req) {
   return { startDate, endDate, statusFilter };
 }
 
-router.get("/admin/stats", requireOwner, (req, res) => {
+router.get("/admin/stats", requireOwner, async (req, res) => {
   const parsed = parseRangeParams(req);
   if (parsed.error) return res.status(400).json({ error: "invalid_input", message: parsed.error });
   const { startDate, endDate, statusFilter } = parsed;
+
+  const db = await ensureReady();
 
   const durationMs = endDate.getTime() - startDate.getTime();
   const prevStart = new Date(startDate.getTime() - durationMs);
   const prevEnd = new Date(startDate.getTime());
 
-  const rangeOrdersAll = fetchOrders(startDate, endDate, null);
+  const rangeOrdersAll = await fetchOrders(db, startDate, endDate, null);
   const rangeOrdersFiltered = statusFilter ? rangeOrdersAll.filter((o) => o.status === statusFilter) : rangeOrdersAll;
-  const previousOrders = fetchOrders(prevStart, prevEnd, statusFilter);
+  const previousOrders = await fetchOrders(db, prevStart, prevEnd, statusFilter);
 
   const summary = summarize(rangeOrdersFiltered);
   const previousSummary = summarize(previousOrders);
@@ -104,7 +91,7 @@ router.get("/admin/stats", requireOwner, (req, res) => {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
-  const today = summarize(fetchOrders(startOfToday, endOfToday, null));
+  const today = summarize(await fetchOrders(db, startOfToday, endOfToday, null));
 
   const bucketHourly = durationMs <= 26 * 60 * 60 * 1000; // ~1 day of slack for "today"
   const buckets = buildBuckets(startDate, endDate, bucketHourly);
@@ -123,8 +110,10 @@ router.get("/admin/stats", requireOwner, (req, res) => {
   const nonCancelled = rangeOrdersFiltered.filter((o) => !NON_REVENUE_STATUSES.has(o.status));
   const itemAgg = new Map();
   const catAgg = new Map();
-  const itemCategoryMap = new Map(db.prepare("SELECT id, category_id FROM menu_items").all().map((r) => [r.id, r.category_id]));
-  const categoryLabelMap = new Map(db.prepare("SELECT id, label_en FROM categories").all().map((r) => [r.id, r.label_en]));
+  const menuItemDocs = await db.collection("menu_items").find().toArray();
+  const itemCategoryMap = new Map(menuItemDocs.map((r) => [r._id, r.categoryId]));
+  const categoryDocs = await db.collection("categories").find().toArray();
+  const categoryLabelMap = new Map(categoryDocs.map((r) => [r._id, r.label.en]));
 
   nonCancelled.forEach((o) => {
     o.items.forEach((it) => {
@@ -171,18 +160,19 @@ function csvEscape(value) {
   return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 }
 
-router.get("/admin/stats/export", requireOwner, (req, res) => {
+router.get("/admin/stats/export", requireOwner, async (req, res) => {
   const parsed = parseRangeParams(req);
   if (parsed.error) return res.status(400).json({ error: "invalid_input", message: parsed.error });
   const { startDate, endDate, statusFilter } = parsed;
 
-  const orders = fetchOrders(startDate, endDate, statusFilter);
+  const db = await ensureReady();
+  const orders = await fetchOrders(db, startDate, endDate, statusFilter);
   const header = ["Order Ref", "Date", "Time", "Table", "Status", "Items", "Total (MAD)"];
   const rows = orders.map((o) => [
     o.ref,
     o.createdAtDate.toLocaleDateString("en-CA"),
     o.createdAtDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-    o.table_number,
+    o.tableNumber,
     o.status,
     o.items.map((i) => `${i.qty}x ${i.name}`).join("; "),
     o.total.toFixed(2)

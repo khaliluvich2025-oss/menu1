@@ -1,5 +1,5 @@
-// Initial data used ONLY the first time the database is created (empty DB).
-// After that, everything lives in data/app.db and is managed through the CMS.
+// Initial data used ONLY the first time the database is empty. After that,
+// everything lives in MongoDB and is managed through the CMS.
 
 const categories = [
   { id: "burgers", sortOrder: 1, labelFr: "Burgers", labelEn: "Burgers", labelAr: "برغر" },

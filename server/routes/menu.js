@@ -1,29 +1,25 @@
 const express = require("express");
-const db = require("../db");
+const { ensureReady } = require("../db");
 const { requireAuth, requireOwner } = require("../middleware");
 
 const router = express.Router();
 
-function mapCategory(row) {
-  return {
-    id: row.id,
-    sortOrder: row.sort_order,
-    label: { fr: row.label_fr, en: row.label_en, ar: row.label_ar }
-  };
+function mapCategory(doc) {
+  return { id: doc._id, sortOrder: doc.sortOrder, label: doc.label };
 }
-function mapItem(row) {
+function mapItem(doc) {
   return {
-    id: row.id,
-    categoryId: row.category_id,
-    sortOrder: row.sort_order,
-    price: row.price,
-    discountPrice: row.discount_price,
-    image: row.image,
-    featured: !!row.featured,
-    recommended: !!row.recommended,
-    available: !!row.available,
-    name: { fr: row.name_fr, en: row.name_en, ar: row.name_ar },
-    description: { fr: row.desc_fr, en: row.desc_en, ar: row.desc_ar }
+    id: doc._id,
+    categoryId: doc.categoryId,
+    sortOrder: doc.sortOrder,
+    price: doc.price,
+    discountPrice: doc.discountPrice,
+    image: doc.image,
+    featured: !!doc.featured,
+    recommended: !!doc.recommended,
+    available: !!doc.available,
+    name: doc.name,
+    description: doc.description
   };
 }
 
@@ -36,155 +32,185 @@ function slugify(text) {
     .slice(0, 60);
 }
 
-function uniqueId(base, exists) {
+async function uniqueId(base, existsAsync) {
   let id = base || "item";
   let n = 2;
-  while (exists(id)) { id = `${base}-${n}`; n += 1; }
+  while (await existsAsync(id)) { id = `${base}-${n}`; n += 1; }
   return id;
 }
 
 // ---------- PUBLIC ----------
-router.get("/menu", (req, res) => {
-  const categories = db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all().map(mapCategory);
-  const items = db.prepare("SELECT * FROM menu_items ORDER BY category_id ASC, sort_order ASC").all().map(mapItem);
-  res.json({ categories, items });
+router.get("/menu", async (req, res) => {
+  const db = await ensureReady();
+  const categories = await db.collection("categories").find().sort({ sortOrder: 1 }).toArray();
+  const items = await db.collection("menu_items").find().sort({ categoryId: 1, sortOrder: 1 }).toArray();
+  res.json({ categories: categories.map(mapCategory), items: items.map(mapItem) });
 });
 
 // ---------- ADMIN: CATEGORIES ----------
-router.get("/admin/categories", requireAuth, (req, res) => {
-  res.json(db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all().map(mapCategory));
+router.get("/admin/categories", requireAuth, async (req, res) => {
+  const db = await ensureReady();
+  const categories = await db.collection("categories").find().sort({ sortOrder: 1 }).toArray();
+  res.json(categories.map(mapCategory));
 });
 
-router.post("/admin/categories", requireOwner, (req, res) => {
+router.post("/admin/categories", requireOwner, async (req, res) => {
   const { labelFr, labelEn, labelAr } = req.body || {};
   if (!labelFr || !labelEn || !labelAr) {
     return res.status(400).json({ error: "invalid_input", message: "All three language labels are required." });
   }
+  const db = await ensureReady();
   const base = slugify(labelEn) || "category";
-  const id = uniqueId(base, (candidate) => !!db.prepare("SELECT 1 FROM categories WHERE id = ?").get(candidate));
-  const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories").get().m;
-  db.prepare("INSERT INTO categories (id, sort_order, label_fr, label_en, label_ar) VALUES (?, ?, ?, ?, ?)")
-    .run(id, maxOrder + 1, labelFr, labelEn, labelAr);
-  res.status(201).json(mapCategory(db.prepare("SELECT * FROM categories WHERE id = ?").get(id)));
+  const id = await uniqueId(base, async (candidate) => !!(await db.collection("categories").findOne({ _id: candidate })));
+  const maxOrderDocs = await db.collection("categories").find().sort({ sortOrder: -1 }).limit(1).toArray();
+  const maxOrder = maxOrderDocs.length ? maxOrderDocs[0].sortOrder : 0;
+  const doc = { _id: id, sortOrder: maxOrder + 1, label: { fr: labelFr, en: labelEn, ar: labelAr } };
+  await db.collection("categories").insertOne(doc);
+  res.status(201).json(mapCategory(doc));
 });
 
-router.put("/admin/categories/:id", requireOwner, (req, res) => {
-  const existing = db.prepare("SELECT * FROM categories WHERE id = ?").get(req.params.id);
+router.put("/admin/categories/:id", requireOwner, async (req, res) => {
+  const db = await ensureReady();
+  const existing = await db.collection("categories").findOne({ _id: req.params.id });
   if (!existing) return res.status(404).json({ error: "not_found" });
   const { labelFr, labelEn, labelAr } = req.body || {};
   if (!labelFr || !labelEn || !labelAr) {
     return res.status(400).json({ error: "invalid_input", message: "All three language labels are required." });
   }
-  db.prepare("UPDATE categories SET label_fr = ?, label_en = ?, label_ar = ? WHERE id = ?")
-    .run(labelFr, labelEn, labelAr, req.params.id);
-  res.json(mapCategory(db.prepare("SELECT * FROM categories WHERE id = ?").get(req.params.id)));
+  await db.collection("categories").updateOne(
+    { _id: req.params.id },
+    { $set: { label: { fr: labelFr, en: labelEn, ar: labelAr } } }
+  );
+  const updated = await db.collection("categories").findOne({ _id: req.params.id });
+  res.json(mapCategory(updated));
 });
 
-router.put("/admin/categories/:id/move", requireOwner, (req, res) => {
+router.put("/admin/categories/:id/move", requireOwner, async (req, res) => {
   const { direction } = req.body || {};
-  const all = db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all();
-  const idx = all.findIndex((c) => c.id === req.params.id);
+  const db = await ensureReady();
+  const all = await db.collection("categories").find().sort({ sortOrder: 1 }).toArray();
+  const idx = all.findIndex((c) => c._id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "not_found" });
   const swapIdx = direction === "up" ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= all.length) return res.json(all.map(mapCategory));
   const a = all[idx], b = all[swapIdx];
-  db.prepare("UPDATE categories SET sort_order = ? WHERE id = ?").run(b.sort_order, a.id);
-  db.prepare("UPDATE categories SET sort_order = ? WHERE id = ?").run(a.sort_order, b.id);
-  res.json(db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all().map(mapCategory));
+  await db.collection("categories").updateOne({ _id: a._id }, { $set: { sortOrder: b.sortOrder } });
+  await db.collection("categories").updateOne({ _id: b._id }, { $set: { sortOrder: a.sortOrder } });
+  const reordered = await db.collection("categories").find().sort({ sortOrder: 1 }).toArray();
+  res.json(reordered.map(mapCategory));
 });
 
-router.delete("/admin/categories/:id", requireOwner, (req, res) => {
-  const count = db.prepare("SELECT COUNT(*) AS n FROM menu_items WHERE category_id = ?").get(req.params.id).n;
+router.delete("/admin/categories/:id", requireOwner, async (req, res) => {
+  const db = await ensureReady();
+  const count = await db.collection("menu_items").countDocuments({ categoryId: req.params.id });
   if (count > 0) {
     return res.status(409).json({ error: "category_not_empty", message: "Remove or move all dishes out of this category first." });
   }
-  const result = db.prepare("DELETE FROM categories WHERE id = ?").run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: "not_found" });
+  const result = await db.collection("categories").deleteOne({ _id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: "not_found" });
   res.json({ ok: true });
 });
 
 // ---------- ADMIN: MENU ITEMS ----------
-router.get("/admin/menu-items", requireAuth, (req, res) => {
-  res.json(db.prepare("SELECT * FROM menu_items ORDER BY category_id ASC, sort_order ASC").all().map(mapItem));
+router.get("/admin/menu-items", requireAuth, async (req, res) => {
+  const db = await ensureReady();
+  const items = await db.collection("menu_items").find().sort({ categoryId: 1, sortOrder: 1 }).toArray();
+  res.json(items.map(mapItem));
 });
 
-router.post("/admin/menu-items", requireOwner, (req, res) => {
+router.post("/admin/menu-items", requireOwner, async (req, res) => {
   const b = req.body || {};
   if (!b.categoryId || !b.nameFr || !b.nameEn || !b.nameAr || b.price == null) {
     return res.status(400).json({ error: "invalid_input", message: "Category, name (3 languages) and price are required." });
   }
-  const category = db.prepare("SELECT 1 FROM categories WHERE id = ?").get(b.categoryId);
+  const db = await ensureReady();
+  const category = await db.collection("categories").findOne({ _id: b.categoryId });
   if (!category) return res.status(400).json({ error: "invalid_category" });
 
   const base = slugify(b.nameEn) || "dish";
-  const id = uniqueId(base, (candidate) => !!db.prepare("SELECT 1 FROM menu_items WHERE id = ?").get(candidate));
-  const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM menu_items WHERE category_id = ?").get(b.categoryId).m;
+  const id = await uniqueId(base, async (candidate) => !!(await db.collection("menu_items").findOne({ _id: candidate })));
+  const maxOrderDocs = await db.collection("menu_items").find({ categoryId: b.categoryId }).sort({ sortOrder: -1 }).limit(1).toArray();
+  const maxOrder = maxOrderDocs.length ? maxOrderDocs[0].sortOrder : 0;
 
-  db.prepare(`
-    INSERT INTO menu_items
-      (id, category_id, sort_order, price, discount_price, image, featured, recommended, available,
-       name_fr, name_en, name_ar, desc_fr, desc_en, desc_ar)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, b.categoryId, maxOrder + 1, Number(b.price), b.discountPrice != null ? Number(b.discountPrice) : null,
-    b.image || null, b.featured ? 1 : 0, b.recommended ? 1 : 0, b.available === false ? 0 : 1,
-    b.nameFr, b.nameEn, b.nameAr, b.descFr || "", b.descEn || "", b.descAr || ""
-  );
-  res.status(201).json(mapItem(db.prepare("SELECT * FROM menu_items WHERE id = ?").get(id)));
+  const doc = {
+    _id: id,
+    categoryId: b.categoryId,
+    sortOrder: maxOrder + 1,
+    price: Number(b.price),
+    discountPrice: b.discountPrice != null ? Number(b.discountPrice) : null,
+    image: b.image || null,
+    featured: !!b.featured,
+    recommended: !!b.recommended,
+    available: b.available !== false,
+    name: { fr: b.nameFr, en: b.nameEn, ar: b.nameAr },
+    description: { fr: b.descFr || "", en: b.descEn || "", ar: b.descAr || "" }
+  };
+  await db.collection("menu_items").insertOne(doc);
+  res.status(201).json(mapItem(doc));
 });
 
-router.put("/admin/menu-items/:id", requireOwner, (req, res) => {
-  const existing = db.prepare("SELECT * FROM menu_items WHERE id = ?").get(req.params.id);
+router.put("/admin/menu-items/:id", requireOwner, async (req, res) => {
+  const db = await ensureReady();
+  const existing = await db.collection("menu_items").findOne({ _id: req.params.id });
   if (!existing) return res.status(404).json({ error: "not_found" });
   const b = req.body || {};
   if (!b.categoryId || !b.nameFr || !b.nameEn || !b.nameAr || b.price == null) {
     return res.status(400).json({ error: "invalid_input", message: "Category, name (3 languages) and price are required." });
   }
-  const category = db.prepare("SELECT 1 FROM categories WHERE id = ?").get(b.categoryId);
+  const category = await db.collection("categories").findOne({ _id: b.categoryId });
   if (!category) return res.status(400).json({ error: "invalid_category" });
 
-  db.prepare(`
-    UPDATE menu_items SET
-      category_id = ?, price = ?, discount_price = ?, image = ?, featured = ?, recommended = ?, available = ?,
-      name_fr = ?, name_en = ?, name_ar = ?, desc_fr = ?, desc_en = ?, desc_ar = ?
-    WHERE id = ?
-  `).run(
-    b.categoryId, Number(b.price), b.discountPrice != null ? Number(b.discountPrice) : null,
-    b.image || null, b.featured ? 1 : 0, b.recommended ? 1 : 0, b.available === false ? 0 : 1,
-    b.nameFr, b.nameEn, b.nameAr, b.descFr || "", b.descEn || "", b.descAr || "",
-    req.params.id
-  );
-  res.json(mapItem(db.prepare("SELECT * FROM menu_items WHERE id = ?").get(req.params.id)));
+  await db.collection("menu_items").updateOne({ _id: req.params.id }, {
+    $set: {
+      categoryId: b.categoryId,
+      price: Number(b.price),
+      discountPrice: b.discountPrice != null ? Number(b.discountPrice) : null,
+      image: b.image || null,
+      featured: !!b.featured,
+      recommended: !!b.recommended,
+      available: b.available !== false,
+      name: { fr: b.nameFr, en: b.nameEn, ar: b.nameAr },
+      description: { fr: b.descFr || "", en: b.descEn || "", ar: b.descAr || "" }
+    }
+  });
+  const updated = await db.collection("menu_items").findOne({ _id: req.params.id });
+  res.json(mapItem(updated));
 });
 
-router.put("/admin/menu-items/:id/move", requireOwner, (req, res) => {
+router.put("/admin/menu-items/:id/move", requireOwner, async (req, res) => {
   const { direction } = req.body || {};
-  const existing = db.prepare("SELECT * FROM menu_items WHERE id = ?").get(req.params.id);
+  const db = await ensureReady();
+  const existing = await db.collection("menu_items").findOne({ _id: req.params.id });
   if (!existing) return res.status(404).json({ error: "not_found" });
-  const siblings = db.prepare("SELECT * FROM menu_items WHERE category_id = ? ORDER BY sort_order ASC").all(existing.category_id);
-  const idx = siblings.findIndex((i) => i.id === existing.id);
+  const siblings = await db.collection("menu_items").find({ categoryId: existing.categoryId }).sort({ sortOrder: 1 }).toArray();
+  const idx = siblings.findIndex((i) => i._id === existing._id);
   const swapIdx = direction === "up" ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= siblings.length) {
-    return res.json(db.prepare("SELECT * FROM menu_items ORDER BY category_id ASC, sort_order ASC").all().map(mapItem));
+    const all = await db.collection("menu_items").find().sort({ categoryId: 1, sortOrder: 1 }).toArray();
+    return res.json(all.map(mapItem));
   }
   const a = siblings[idx], c = siblings[swapIdx];
-  db.prepare("UPDATE menu_items SET sort_order = ? WHERE id = ?").run(c.sort_order, a.id);
-  db.prepare("UPDATE menu_items SET sort_order = ? WHERE id = ?").run(a.sort_order, c.id);
-  res.json(db.prepare("SELECT * FROM menu_items ORDER BY category_id ASC, sort_order ASC").all().map(mapItem));
+  await db.collection("menu_items").updateOne({ _id: a._id }, { $set: { sortOrder: c.sortOrder } });
+  await db.collection("menu_items").updateOne({ _id: c._id }, { $set: { sortOrder: a.sortOrder } });
+  const all = await db.collection("menu_items").find().sort({ categoryId: 1, sortOrder: 1 }).toArray();
+  res.json(all.map(mapItem));
 });
 
 // Owner AND receptionist can flip availability (the receptionist's main job).
-router.patch("/admin/menu-items/:id/availability", requireAuth, (req, res) => {
+router.patch("/admin/menu-items/:id/availability", requireAuth, async (req, res) => {
   const { available } = req.body || {};
-  const existing = db.prepare("SELECT * FROM menu_items WHERE id = ?").get(req.params.id);
+  const db = await ensureReady();
+  const existing = await db.collection("menu_items").findOne({ _id: req.params.id });
   if (!existing) return res.status(404).json({ error: "not_found" });
-  db.prepare("UPDATE menu_items SET available = ? WHERE id = ?").run(available ? 1 : 0, req.params.id);
-  res.json(mapItem(db.prepare("SELECT * FROM menu_items WHERE id = ?").get(req.params.id)));
+  await db.collection("menu_items").updateOne({ _id: req.params.id }, { $set: { available: !!available } });
+  const updated = await db.collection("menu_items").findOne({ _id: req.params.id });
+  res.json(mapItem(updated));
 });
 
-router.delete("/admin/menu-items/:id", requireOwner, (req, res) => {
-  const result = db.prepare("DELETE FROM menu_items WHERE id = ?").run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: "not_found" });
+router.delete("/admin/menu-items/:id", requireOwner, async (req, res) => {
+  const db = await ensureReady();
+  const result = await db.collection("menu_items").deleteOne({ _id: req.params.id });
+  if (result.deletedCount === 0) return res.status(404).json({ error: "not_found" });
   res.json({ ok: true });
 });
 

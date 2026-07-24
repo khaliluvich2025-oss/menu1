@@ -1465,11 +1465,8 @@ function trackerStageState(order, stageKey){
 function historyTimeFor(order, stageKey){
   const entry = order.history && order.history.find(h=>h.status === stageKey);
   if(!entry) return "";
-  const d = parseServerDate(entry.at);
+  const d = new Date(entry.at);
   return d.toLocaleTimeString(state.lang === "fr" ? "fr-FR" : state.lang === "ar" ? "ar" : "en-GB", { hour:"2-digit", minute:"2-digit" });
-}
-function parseServerDate(s){
-  return new Date(s.includes("T") ? s : `${s.replace(" ", "T")}Z`);
 }
 
 function renderOrderTracker(order){

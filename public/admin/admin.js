@@ -203,9 +203,8 @@ const ORDER_STATUS_LABELS = {
 const ORDER_PENDING_STATUSES = new Set(["received", "confirmed", "preparing", "ready"]);
 const ORDER_TERMINAL_STATUSES = new Set(["completed", "cancelled", "rejected"]);
 
-function formatOrderTime(sqliteDatetime) {
-  const iso = sqliteDatetime.includes("T") ? sqliteDatetime : `${sqliteDatetime.replace(" ", "T")}Z`;
-  const d = new Date(iso);
+function formatOrderTime(isoDatetime) {
+  const d = new Date(isoDatetime);
   const diffMin = Math.floor((Date.now() - d.getTime()) / 60000);
   if (diffMin < 1) return "just now";
   if (diffMin < 60) return `${diffMin}m ago`;

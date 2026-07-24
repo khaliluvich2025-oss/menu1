@@ -3,8 +3,19 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const express = require("express");
 const session = require("express-session");
+// connect-mongo ships as an ESM package with a generated CJS build; a plain
+// require() gets the module namespace object, not the class itself — the
+// real export lives at .default (confirmed against the installed version,
+// not assumed).
+const MongoStore = require("connect-mongo").default;
 
-require("./server/db"); // opens/creates the database and seeds it on first run
+const { clientPromise, DB_NAME } = require("./server/mongo");
+require("./server/db").ensureReady().catch((err) => {
+  // Route handlers await the same cached promise and will surface a real
+  // error to the client; this just gets the connection warming up at boot
+  // instead of waiting for the first request, and logs it either way.
+  console.error("[db] MongoDB connection/initialization failed:", err.message);
+});
 const { IS_VERCEL, uploadsDir } = require("./server/env-paths");
 
 const authRoutes = require("./server/routes/auth");
@@ -37,6 +48,11 @@ app.use(
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    // Shares the same MongoDB connection as the app data. Without this,
+    // express-session's default MemoryStore keeps sessions in one instance's
+    // process memory — invisible to any other concurrent serverless
+    // instance, which made logins randomly appear to fail on Vercel.
+    store: MongoStore.create({ clientPromise, dbName: DB_NAME, collectionName: "sessions" }),
     cookie: {
       httpOnly: true,
       sameSite: "lax",

@@ -24,93 +24,91 @@
   ```json
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/index" }]
   ```
-- `server/env-paths.js` redirects the SQLite file and upload destination to
-  `/tmp` when `process.env.VERCEL` is set, since Vercel functions have a
-  read-only filesystem everywhere except `/tmp`. Without this the app would
-  crash on boot trying to write `data/app.db`.
+- **All app data lives in MongoDB** (`server/mongo.js`, `server/db.js`) —
+  categories, menu items, restaurant info, orders (with status history
+  embedded per order), users, and sessions. This replaced an earlier
+  SQLite-in-`/tmp` approach that turned out to be a hard blocker, not just a
+  caveat: Vercel serverless functions have no persistent filesystem and can
+  route requests across multiple concurrent instances with no shared memory,
+  so a customer's order written by one instance could be genuinely invisible
+  to an admin request served by another — confirmed live during an actual
+  order-placement test, not theoretical. `server/env-paths.js` still redirects
+  *uploaded dish photos* (multer, local disk) to `/tmp` since that piece
+  hasn't been migrated yet (see limitations below) — everything else no
+  longer touches the filesystem.
 
 ## Deploy steps
 
 1. Push this repo to GitHub (already done if you're reading this via the PR).
-2. In the Vercel dashboard: **Add New Project** → import `khaliluvich2025-oss/menu1`.
-3. Framework preset: leave as **Other** (vercel.json already sets this).
-4. Set environment variables (Project Settings → Environment Variables) —
+2. Create a MongoDB cluster if you don't have one: [MongoDB Atlas](https://www.mongodb.com/cloud/atlas),
+   free M0 tier, no credit card required. Under **Connect → Drivers**, copy
+   the connection string (`mongodb+srv://user:password@cluster.../`).
+3. In the Vercel dashboard: **Add New Project** → import `khaliluvich2025-oss/menu1`.
+4. Framework preset: leave as **Other** (vercel.json already sets this).
+5. Set environment variables (Project Settings → Environment Variables) —
    see `.env.example` for the full list:
+   - `MONGODB_URI` — **required**, the connection string from step 2. The
+     server throws on boot without it; there is no fallback.
    - `SESSION_SECRET` — a long random string, private to your deployment.
-     Not just "recommended": without it, every serverless instance falls
-     back to its own fixed *public* default (see caveat below) — logins
-     still work, but aren't private.
+     Without it, every instance falls back to a fixed *public* default (see
+     caveat below) — sessions still work correctly now that the store is
+     shared via MongoDB, they just aren't private.
    - `OWNER_PASSWORD` / `RECEPTIONIST_PASSWORD` — recommended (see caveat below).
-5. Deploy.
+6. Deploy.
 
 ## Known limitations — read before relying on this in production
 
-You asked to defer migrating off SQLite and the local uploads folder, so
-this deployment keeps both, made just stable enough not to crash. Concretely:
-
-- **The database resets on every cold start.** Vercel functions have no
-  persistent filesystem; `data/app.db` lives in `/tmp`, which is wiped
-  whenever a fresh instance spins up (after ~a few minutes idle, or on every
-  deploy). Any menu edits, orders, or status changes made during one "warm"
-  window are gone on the next cold start — it reseeds from `server/seed-data.js`
-  each time.
-- **Sessions use a fixed test secret, not random — and even so, are not
-  reliably shared across concurrent visitors.** `SESSION_SECRET` used to fall
-  back to a fresh random value per cold start; since Vercel routes requests
-  across *multiple concurrent* instances (not one long-lived process), a
-  cookie signed by instance A failed verification on instance B, and login
-  appeared to randomly fail on the very next request — confirmed live via a
-  live client+admin test (login returned 200, the immediate next request 401'd,
-  100% of the time). Fixed the same way as the passwords below: a fixed,
-  public, documented fallback secret so all instances agree, unless you set a
-  real `SESSION_SECRET`. That fixes signature verification, but sessions are
-  still stored in each instance's own memory (`express-session`'s default
-  `MemoryStore`) — two requests that land on *different* instances still
-  won't see each other's logged-in state. Same root cause as the database
-  reset above (no shared storage across instances), and it needs the same
-  fix: a real external, shared store (Postgres/Redis/Supabase-backed session
-  store), not just a code tweak. Low-traffic testing mostly avoids this
-  because Vercel tends to reuse one warm instance; don't rely on it for real
-  concurrent staff+customer usage.
-- **Login credentials are a fixed test default, not random.** Every reseed
-  (i.e. every cold start, until you set real env vars) creates:
+- **Uploaded dish photos still don't persist**, and may not reliably serve
+  back at all. Multer writes them to `/tmp` on Vercel (see
+  `server/env-paths.js`), which is wiped on cold start — this piece wasn't
+  part of the MongoDB migration and still needs a real file store (e.g.
+  Vercel Blob, S3, or storing images in MongoDB/GridFS) before it's reliable.
+  Treat it as unverified/best-effort until that's done.
+- **Login credentials are a fixed test default, not random.** First boot
+  (i.e. the first time the `users` collection is empty) creates:
   - `owner` / `EmberOwner#2026Secure`
   - `receptionist` / `EmberFrontDesk#2026`
 
   These values are **public** — they're in this source file and in
-  `server/db.js`. That's a deliberate trade-off for a test deployment with an
-  ephemeral database (a *random* password would be unrecoverable except
-  through Vercel's function logs, which is worse for testing). Set
-  `OWNER_PASSWORD` / `RECEPTIONIST_PASSWORD` as real environment variables
-  before this is used for anything beyond casual testing — they always
-  override these defaults. Either way, both accounts are forced to set a new
-  password on first login; on Vercel that change won't survive the next cold
-  start without persistent storage (expected, same root cause as above).
-- **Uploaded dish photos won't persist**, and may not reliably serve back at
-  all — this specific feature (multer upload → serve back) hasn't been
-  tested against the live deployment yet. Treat it as unverified until tried.
-- **This is a structural/demo deployment, not production-ready for real
-  customer traffic.** Before that, you'll want a real persistent database
-  (Vercel Postgres, Turso, or the Supabase move discussed earlier) and a
-  proper file storage service (e.g. Vercel Blob) for uploads.
+  `server/db.js`. That's a deliberate trade-off for a test deployment (a
+  *random* password would be unrecoverable except through Vercel's function
+  logs). Set `OWNER_PASSWORD` / `RECEPTIONIST_PASSWORD` as real environment
+  variables before this is used for anything beyond casual testing — they
+  always override these defaults. Both accounts are forced to set a new
+  password on first login; unlike the old SQLite-on-`/tmp` setup, that change
+  now persists in MongoDB across cold starts and across every instance.
+- **`SESSION_SECRET` defaults to a fixed public value if unset** — sessions
+  will work correctly (the store is shared via MongoDB now), but anyone who
+  reads this repo's source could theoretically forge a session cookie's
+  signature. Set a private `SESSION_SECRET` before real use.
+- **This deployment is single-tenant** (one menu/order set per install) — see
+  `server/routes/stats.js` for the note on why "restaurant-level isolation"
+  isn't a separate concern here.
 
-## Local development is unchanged
+## Local development
 
 ```bash
 npm install
+```
+
+Copy `.env.example` to `.env` and set at least `MONGODB_URI` — local dev now
+needs a real MongoDB connection too (the same free Atlas cluster works fine,
+or point it at a local `mongod`/Docker MongoDB if you prefer). Then:
+
+```bash
 npm start
 ```
 
-Still serves everything from `http://localhost:3000` exactly as before —
-`server.js` at the root now, but same behavior, same routes, same data
-folder on local disk (no `/tmp` redirect kicks in unless `VERCEL` is set).
+Serves everything from `http://localhost:3000` — same routes, same behavior
+as production, just against whichever database `MONGODB_URI` points to.
 
 ## Verifying the Vercel build without deploying
 
 Neither the `vercel` nor `gh` CLI was available in the environment this was
 prepared in, so the build/config below wasn't validated against Vercel's
-actual build pipeline — only reasoned through against current Vercel docs.
-Before trusting this in production, run once yourself:
+actual build pipeline — only reasoned through against current Vercel docs
+and confirmed against the live deployment afterward. Before trusting this in
+production, you can also run once yourself:
 
 ```bash
 npx vercel@latest build

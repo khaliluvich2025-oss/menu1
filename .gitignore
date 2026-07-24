@@ -46,13 +46,6 @@ __pycache__/
 inspiraation photos/
 inspiration links.txt
 
-# Runtime data: SQLite database (contains password hashes + real order data)
-# and its journal files. Never commit these.
-data/*.db
-data/*.db-*
-data/*.bak-*
-data/app.db.bak-*
-
 # Runtime uploads (customer/owner-uploaded dish photos) — generated content,
 # not source. On Vercel these land in ephemeral /tmp anyway (see server/env-paths.js).
 uploads/*

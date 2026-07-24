@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const db = require("../db");
+const { ObjectId } = require("mongodb");
+const { ensureReady } = require("../db");
 const { requireAuth } = require("../middleware");
 
 const router = express.Router();
@@ -15,7 +16,7 @@ function getAttemptState(username) {
   return attempts.get(username) || { count: 0, lockUntil: 0 };
 }
 
-router.post("/login", (req, res) => {
+router.post("/login", async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: "missing_credentials" });
@@ -27,8 +28,9 @@ router.post("/login", (req, res) => {
     return res.status(429).json({ error: "locked", waitSeconds });
   }
 
-  const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
-  const ok = user && bcrypt.compareSync(password, user.password_hash);
+  const db = await ensureReady();
+  const user = await db.collection("users").findOne({ username });
+  const ok = user && bcrypt.compareSync(password, user.passwordHash);
 
   if (!ok) {
     state.count += 1;
@@ -41,38 +43,41 @@ router.post("/login", (req, res) => {
   }
 
   attempts.delete(username);
-  req.session.user = { id: user.id, username: user.username, role: user.role };
+  req.session.user = { id: user._id.toString(), username: user.username, role: user.role };
   res.json({
     username: user.username,
     role: user.role,
-    mustChangePassword: !!user.must_change_password
+    mustChangePassword: !!user.mustChangePassword
   });
 });
 
 router.post("/logout", (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie("connect.sid");
+    res.clearCookie("emberTable.sid");
     res.json({ ok: true });
   });
 });
 
-router.get("/me", requireAuth, (req, res) => {
-  const user = db.prepare("SELECT username, role, must_change_password FROM users WHERE id = ?").get(req.session.user.id);
+router.get("/me", requireAuth, async (req, res) => {
+  const db = await ensureReady();
+  const user = await db.collection("users").findOne({ _id: new ObjectId(req.session.user.id) });
   if (!user) return res.status(401).json({ error: "not_authenticated" });
-  res.json({ username: user.username, role: user.role, mustChangePassword: !!user.must_change_password });
+  res.json({ username: user.username, role: user.role, mustChangePassword: !!user.mustChangePassword });
 });
 
-router.post("/change-password", requireAuth, (req, res) => {
+router.post("/change-password", requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword || newPassword.length < 8) {
     return res.status(400).json({ error: "invalid_input", message: "New password must be at least 8 characters." });
   }
-  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.session.user.id);
-  if (!user || !bcrypt.compareSync(currentPassword, user.password_hash)) {
+  const db = await ensureReady();
+  const _id = new ObjectId(req.session.user.id);
+  const user = await db.collection("users").findOne({ _id });
+  if (!user || !bcrypt.compareSync(currentPassword, user.passwordHash)) {
     return res.status(401).json({ error: "wrong_current_password" });
   }
   const newHash = bcrypt.hashSync(newPassword, 10);
-  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(newHash, user.id);
+  await db.collection("users").updateOne({ _id }, { $set: { passwordHash: newHash, mustChangePassword: false } });
   res.json({ ok: true });
 });
 
