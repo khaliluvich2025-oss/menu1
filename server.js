@@ -17,11 +17,14 @@ const statsRoutes = require("./server/routes/stats");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const PORT = process.env.PORT || 3000;
 
-// A random secret keeps sessions safe by default. It means everyone is logged
-// out if the server restarts — fine for this scale. Set SESSION_SECRET in a
-// .env file (or a Vercel environment variable) instead if you'd rather
-// sessions survive restarts/cold starts.
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+// Fixed, documented test default — NOT randomly generated. A per-instance
+// random secret breaks logins on Vercel: every cold start (and Vercel routes
+// requests across MULTIPLE concurrent instances, not just one) would mint a
+// different secret, so a session cookie signed by one instance fails
+// signature verification on another and the user silently appears logged
+// out. Set a real SESSION_SECRET env var in production to use a private one.
+const DEFAULT_SESSION_SECRET = "ember-table-test-session-secret-2026-not-for-real-production-use";
+const SESSION_SECRET = process.env.SESSION_SECRET || DEFAULT_SESSION_SECRET;
 
 const app = express();
 app.disable("x-powered-by");
