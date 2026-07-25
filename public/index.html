@@ -226,6 +226,21 @@
   .cart-count.bump{ animation: cartBump calc(360ms * var(--motion-scale)) ease; }
   @keyframes cartBump{ 0%{transform:scale(1);} 35%{transform:scale(1.35);} 100%{transform:scale(1);} }
 
+  /* ---------- ORDER RESUME BANNER ---------- */
+  .order-resume-banner{
+    display:flex; align-items:center; gap:12px;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:10px 10px 10px 16px; margin-top:16px;
+  }
+  .order-resume-btn{
+    flex:1; display:flex; align-items:center; justify-content:flex-start;
+    background:transparent; border:none; cursor:pointer; text-align:start;
+    padding:6px 0; font:inherit; color:var(--text);
+  }
+  .order-resume-text{ display:flex; align-items:center; gap:10px; font-weight:600; font-size:.88rem; }
+  .order-resume-ref{ color:var(--text-muted); font-weight:500; }
+  .order-resume-dismiss{ width:36px; height:36px; font-size:1.2rem; }
+
   /* ---------- HERO ---------- */
   .hero{ padding-block: 28px 20px; overflow:hidden; }
   .hero-inner{ display:grid; grid-template-columns: 1fr; gap:22px; align-items:center; }
@@ -646,6 +661,16 @@
 
 <main id="mainContent">
 
+  <div class="order-resume-banner container" id="orderResumeBanner" hidden>
+    <button type="button" class="order-resume-btn" id="orderResumeBtn">
+      <span class="order-resume-text">
+        <span data-i18n="orderResumeTitle">Continuer le suivi de votre commande</span>
+        <span class="order-resume-ref" id="orderResumeRef"></span>
+      </span>
+    </button>
+    <button type="button" class="icon-btn order-resume-dismiss" id="orderResumeDismissBtn" aria-label="Ignorer">×</button>
+  </div>
+
   <section class="hero" id="heroSection">
     <div class="hero-inner container">
       <div class="hero-copy">
@@ -847,6 +872,8 @@ const translations = {
     trackerRejectedTitle:"Commande non acceptée",
     trackerRejectedText:"Nous ne pouvons pas préparer cette commande pour le moment. Merci de vous adresser à notre équipe.",
     checkoutBarView:"Voir la commande",
+    orderResumeTitle:"Continuer le suivi de votre commande",
+    orderResumeDismiss:"Ignorer",
     infoAddress:"Adresse", infoHours:"Horaires", infoPhone:"Téléphone", infoFollow:"Suivez-nous",
     footerNote:"Commande à table uniquement · Paiement en caisse"
   },
@@ -897,6 +924,8 @@ const translations = {
     trackerRejectedTitle:"Order not accepted",
     trackerRejectedText:"We're unable to prepare this order right now. Please speak to our team.",
     checkoutBarView:"View order",
+    orderResumeTitle:"Continue tracking your order",
+    orderResumeDismiss:"Dismiss",
     infoAddress:"Address", infoHours:"Opening hours", infoPhone:"Phone", infoFollow:"Follow us",
     footerNote:"Dine-in orders only · Pay at the counter"
   },
@@ -947,6 +976,8 @@ const translations = {
     trackerRejectedTitle:"لم يتم قبول الطلب",
     trackerRejectedText:"لا يمكننا تحضير هذا الطلب حاليًا. يرجى التواصل مع فريقنا.",
     checkoutBarView:"عرض الطلب",
+    orderResumeTitle:"متابعة تتبع طلبك",
+    orderResumeDismiss:"تجاهل",
     infoAddress:"العنوان", infoHours:"ساعات العمل", infoPhone:"الهاتف", infoFollow:"تابعنا",
     footerNote:"الطلب من الطاولة فقط · الدفع في الصندوق"
   }
@@ -1056,6 +1087,10 @@ const checkoutBarCount = document.getElementById("checkoutBarCount");
 const checkoutBarTotal = document.getElementById("checkoutBarTotal");
 const toastEl = document.getElementById("toast");
 const mainEl = document.getElementById("mainContent");
+const orderResumeBanner = document.getElementById("orderResumeBanner");
+const orderResumeBtn = document.getElementById("orderResumeBtn");
+const orderResumeRefEl = document.getElementById("orderResumeRef");
+const orderResumeDismissBtn = document.getElementById("orderResumeDismissBtn");
 
 /* =========================================================================
    FALLBACK / MEDIA MARKUP
@@ -1325,8 +1360,8 @@ function bumpCartCount(){
 function renderCartBody(lines){
   if(lines.length === 0){
     const savedOrder = loadFromStorage(STORAGE_KEYS.lastOrder, null);
-    if(savedOrder && savedOrder.ref && !TRACKER_TERMINAL_STATUSES.includes(savedOrder.status)){
-      startOrderTrackerPolling(savedOrder.ref);
+    if(savedOrder && savedOrder.trackingToken && !TRACKER_TERMINAL_STATUSES.includes(savedOrder.status) && !isOrderExpired(savedOrder)){
+      startOrderTrackerPolling(savedOrder.trackingToken);
       return;
     }
     stopOrderTrackerPolling();
@@ -1437,11 +1472,15 @@ menuSection.addEventListener("click", (e)=>{
 /* =========================================================================
    DIRECT ORDER CHECKOUT + LIVE ORDER TRACKER — submits the cart to the CMS
    (POST /api/orders) instead of opening WhatsApp, then polls GET
-   /api/orders/:ref so the customer sees kitchen status updates (received →
-   confirmed → preparing → ready → completed, or cancelled/rejected) without
-   ever refreshing. True push-based updates (Supabase Realtime) are a planned
-   drop-in swap for this polling transport — the rendering code below won't
-   need to change when that lands.
+   /api/orders/by-token/:token (a secret per-order token, never the public
+   ref) so the customer sees kitchen status updates (received → confirmed →
+   preparing → ready → completed, or cancelled/rejected) without ever
+   refreshing. The active order (and its token) persists in localStorage so
+   it survives a reload/reopen — see ORDER_RECOVERY_EXPIRY_HOURS and
+   updateOrderResumeBanner() below for the visible resume affordance. True
+   push-based updates (Supabase Realtime) are a planned drop-in swap for this
+   polling transport — the rendering code below won't need to change when
+   that lands.
    ========================================================================= */
 const TRACKER_STAGES = ["received", "confirmed", "preparing", "ready", "completed"];
 const TRACKER_STAGE_KEYS = {
@@ -1450,8 +1489,9 @@ const TRACKER_STAGE_KEYS = {
 };
 const TRACKER_TERMINAL_STATUSES = ["completed", "cancelled", "rejected"];
 const ORDER_TRACKER_POLL_MS = 4000;
+const ORDER_RECOVERY_EXPIRY_HOURS = 6; // stop offering to resume an order this many hours after it was placed
 let orderTrackerPollTimer = null;
-let activeTrackerRef = null;
+let activeTrackerToken = null;
 
 function trackerStageState(order, stageKey){
   if(order.status === "completed") return "done";
@@ -1527,34 +1567,68 @@ function renderOrderTracker(order){
     newOrderBtn.addEventListener("click", ()=>{
       saveToStorage(STORAGE_KEYS.lastOrder, null);
       stopOrderTrackerPolling();
+      updateOrderResumeBanner();
       updateCartUI();
     });
   }
 }
 
-async function fetchAndRenderOrderTracker(ref){
+function isOrderExpired(order){
+  if(!order || !order.createdAt) return true;
+  const ageMs = Date.now() - new Date(order.createdAt).getTime();
+  return ageMs > ORDER_RECOVERY_EXPIRY_HOURS * 60 * 60 * 1000;
+}
+function updateOrderResumeBanner(){
+  const savedOrder = loadFromStorage(STORAGE_KEYS.lastOrder, null);
+  const show = savedOrder && savedOrder.trackingToken
+    && !TRACKER_TERMINAL_STATUSES.includes(savedOrder.status)
+    && !isOrderExpired(savedOrder);
+  orderResumeBanner.hidden = !show;
+  if(show) orderResumeRefEl.textContent = savedOrder.ref;
+}
+async function fetchAndRenderOrderTracker(token){
   try{
-    const res = await fetch(`/api/orders/${encodeURIComponent(ref)}`);
+    const res = await fetch(`/api/orders/by-token/${encodeURIComponent(token)}`);
     if(!res.ok) throw new Error("not_found");
     const order = await res.json();
+    order.trackingToken = token; // by-token response never echoes it back — carry it forward so localStorage keeps it
     saveToStorage(STORAGE_KEYS.lastOrder, order);
     renderOrderTracker(order);
+    updateOrderResumeBanner();
     if(TRACKER_TERMINAL_STATUSES.includes(order.status)) stopOrderTrackerPolling();
   }catch(e){
     stopOrderTrackerPolling();
   }
 }
-function startOrderTrackerPolling(ref){
-  if(activeTrackerRef === ref && orderTrackerPollTimer) return; // already tracking this exact order
+function startOrderTrackerPolling(token){
+  if(activeTrackerToken === token && orderTrackerPollTimer) return; // already tracking this exact order
   stopOrderTrackerPolling();
-  activeTrackerRef = ref;
-  fetchAndRenderOrderTracker(ref);
-  orderTrackerPollTimer = window.setInterval(()=>fetchAndRenderOrderTracker(ref), ORDER_TRACKER_POLL_MS);
+  activeTrackerToken = token;
+  fetchAndRenderOrderTracker(token);
+  orderTrackerPollTimer = window.setInterval(()=>fetchAndRenderOrderTracker(token), ORDER_TRACKER_POLL_MS);
 }
 function stopOrderTrackerPolling(){
   if(orderTrackerPollTimer){ window.clearInterval(orderTrackerPollTimer); orderTrackerPollTimer = null; }
-  activeTrackerRef = null;
+  activeTrackerToken = null;
 }
+function checkTrackQueryParam(){
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("track");
+  if(!token) return Promise.resolve();
+  return fetchAndRenderOrderTracker(token).then(()=>{
+    updateOrderResumeBanner();
+    openCart();
+    const url = new URL(window.location.href);
+    url.searchParams.delete("track");
+    window.history.replaceState({}, "", url);
+  });
+}
+orderResumeBtn.addEventListener("click", ()=>{ openCart(); });
+orderResumeDismissBtn.addEventListener("click", ()=>{
+  saveToStorage(STORAGE_KEYS.lastOrder, null);
+  stopOrderTrackerPolling();
+  updateOrderResumeBanner();
+});
 
 async function handleCheckout(){
   const tableVal = tableNumberInput.value.trim();
@@ -1588,6 +1662,7 @@ async function handleCheckout(){
     state.cart = [];
     persistCart();
     saveToStorage(STORAGE_KEYS.lastOrder, data); // so the empty-cart render below finds it and goes straight to the tracker
+    updateOrderResumeBanner();
     updateCartUI();
   }catch(e){
     tableErrorMsg.hidden = false;
@@ -1616,6 +1691,7 @@ function applyTranslations(){
   tableNumberInput.setAttribute("placeholder", t("tablePlaceholder"));
   langSwitch.setAttribute("aria-label", t("langSwitchLabel"));
   cartCloseBtn.setAttribute("aria-label", t("cartClose"));
+  orderResumeDismissBtn.setAttribute("aria-label", t("orderResumeDismiss"));
   themeToggleBtn.setAttribute("aria-label", state.theme === "dark" ? t("themeToLight") : t("themeToDark"));
 
   document.getElementById("openHoursText").textContent = restaurantConfig.openingHours[state.lang] || restaurantConfig.openingHours.en;
@@ -1769,7 +1845,7 @@ async function loadAndRenderMenu(){
 }
 menuRetryBtn.addEventListener("click", loadAndRenderMenu);
 
-function init(){
+async function init(){
   revealObserver = new IntersectionObserver((entries)=>{
     entries.forEach(entry=>{
       if(entry.isIntersecting){ entry.target.classList.add("is-visible"); revealObserver.unobserve(entry.target); }
@@ -1804,7 +1880,9 @@ function init(){
 
   updateHeaderScrollState();
 
-  loadAndRenderMenu();
+  await loadAndRenderMenu();
+  await checkTrackQueryParam();
+  updateOrderResumeBanner();
 }
 document.addEventListener("DOMContentLoaded", init);
 </script>

@@ -25,6 +25,11 @@ async function initialize() {
 
   await db.collection("orders").createIndex({ ref: 1 }, { unique: true });
   await db.collection("orders").createIndex({ createdAt: 1 });
+  // sparse: orders created before this field existed have no trackingToken
+  // at all, and a plain unique index would collide on the shared implicit
+  // null the moment a second such document exists — sparse simply excludes
+  // them (they were never reachable via a saved token anyway).
+  await db.collection("orders").createIndex({ trackingToken: 1 }, { unique: true, sparse: true });
   await db.collection("users").createIndex({ username: 1 }, { unique: true });
 
   await seedMenuIfEmpty(db);

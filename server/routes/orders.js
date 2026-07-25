@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("node:crypto");
 const { ObjectId } = require("mongodb");
 const { ensureReady } = require("../db");
 const { requireAuth } = require("../middleware");
@@ -13,6 +14,15 @@ function generateOrderRef() {
   const stamp = String(now.getFullYear()).slice(2) + String(now.getMonth() + 1).padStart(2, "0") + String(now.getDate()).padStart(2, "0");
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `ET-${stamp}-${rand}`;
+}
+
+// 256 bits, URL-safe — used as the sole customer-facing lookup key for order
+// tracking (see GET /orders/by-token/:token below), unlike `ref` which is
+// only a few random digits + the date and stays purely a cosmetic label.
+// No DB-uniqueness retry loop needed at this size (collision probability is
+// negligible), unlike generateOrderRef().
+function generateTrackingToken() {
+  return crypto.randomBytes(32).toString("base64url");
 }
 
 function mapOrder(doc) {
@@ -88,10 +98,12 @@ router.post("/orders", async (req, res) => {
 
   let ref;
   do { ref = generateOrderRef(); } while (await db.collection("orders").findOne({ ref }));
+  const trackingToken = generateTrackingToken();
 
   const now = new Date();
   const doc = {
     ref,
+    trackingToken,
     tableNumber,
     items: orderItems,
     total,
@@ -103,15 +115,16 @@ router.post("/orders", async (req, res) => {
   const result = await db.collection("orders").insertOne(doc);
   doc._id = result.insertedId;
 
-  res.status(201).json({ ...mapOrder(doc), history: publicHistory(doc) });
+  res.status(201).json({ ...mapOrder(doc), history: publicHistory(doc), trackingToken });
 });
 
-// Public: live tracker polling target. Looked up by ref (an unguessable
-// ET-YYMMDD-#### token), not by internal id — no auth, this is the same
-// information the customer already has from their own confirmation screen.
-router.get("/orders/:ref", async (req, res) => {
+// Public: live tracker polling target. Looked up by a random 256-bit
+// tracking token generated once at checkout — never the human-readable
+// ref (guessable: date + 4 random digits, no rate limiting), which stays
+// purely a cosmetic display label from here on.
+router.get("/orders/by-token/:token", async (req, res) => {
   const db = await ensureReady();
-  const doc = await db.collection("orders").findOne({ ref: req.params.ref });
+  const doc = await db.collection("orders").findOne({ trackingToken: req.params.token });
   if (!doc) return res.status(404).json({ error: "not_found" });
   res.json({ ...mapOrder(doc), history: publicHistory(doc) });
 });
