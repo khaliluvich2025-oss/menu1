@@ -2,6 +2,13 @@ require("dotenv").config();
 const path = require("node:path");
 const crypto = require("node:crypto");
 const express = require("express");
+// Express 4 doesn't catch rejections thrown inside async route handlers —
+// every route here does `await ensureReady()` with no try/catch, so a failed
+// DB call previously left the request hanging forever (no response, no
+// error) instead of reaching the error-handling middleware below. This
+// patches Express's routing layer to forward those rejections to next(err)
+// automatically, app-wide, with no per-route changes needed.
+require("express-async-errors");
 const session = require("express-session");
 // connect-mongo ships as an ESM package with a generated CJS build; a plain
 // require() gets the module namespace object, not the class itself — the
@@ -41,7 +48,24 @@ const app = express();
 app.disable("x-powered-by");
 if (IS_VERCEL) app.set("trust proxy", 1); // needed for secure cookies behind Vercel's proxy/TLS termination
 
+// Last-resort safety net: connect-mongo builds its own internal promise chain
+// off `clientPromise` (store.collectionP) with no rejection handler attached
+// at construction time. If the Mongo connection fails, that chain rejects
+// unhandled and crashes the ENTIRE process for ALL users — confirmed live
+// (a single failed login took the whole server down) — even though the
+// app's own `ensureReady().catch()` below handled the same underlying
+// failure just fine. Every request already surfaces real DB errors to the
+// client that hit them; this just stops one bad promise anywhere from
+// silently taking the whole server down for everyone else.
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection]", err);
+});
+
 app.use(express.json());
+const sessionStore = MongoStore.create({ clientPromise, dbName: DB_NAME, collectionName: "sessions" });
+sessionStore.collectionP.catch((err) => {
+  console.error("[db] Session store's MongoDB connection failed:", err.message);
+});
 app.use(
   session({
     name: "emberTable.sid",
@@ -52,7 +76,7 @@ app.use(
     // express-session's default MemoryStore keeps sessions in one instance's
     // process memory — invisible to any other concurrent serverless
     // instance, which made logins randomly appear to fail on Vercel.
-    store: MongoStore.create({ clientPromise, dbName: DB_NAME, collectionName: "sessions" }),
+    store: sessionStore,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
