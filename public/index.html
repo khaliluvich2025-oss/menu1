@@ -195,6 +195,38 @@
   .brand-logo-mark{ color:var(--primary); flex-shrink:0; }
   .brand-logo-frame{ flex-shrink:0; width:40px; height:40px; }
   .brand-logo-frame img{ width:40px; height:40px; border-radius:10px; object-fit:cover; display:block; }
+
+  .loading-splash{
+    position:fixed; inset:0; z-index:300;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg);
+    transition: opacity calc(400ms * var(--motion-scale)) ease, visibility calc(400ms * var(--motion-scale)) ease;
+  }
+  .loading-splash.is-hidden{ opacity:0; visibility:hidden; pointer-events:none; }
+  .loading-splash-logo{
+    width:76px; height:76px; color:var(--primary);
+    display:flex; align-items:center; justify-content:center;
+    animation: splashPop calc(700ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1) both;
+  }
+  .loading-splash-logo svg{ width:100%; height:100%; }
+  .loading-splash-logo img{ width:100%; height:100%; border-radius:10px; object-fit:cover; display:block; }
+  @keyframes splashPop{
+    0%{ transform:scale(.55); opacity:0; }
+    65%{ transform:scale(1.08); opacity:1; }
+    100%{ transform:scale(1); opacity:1; }
+  }
+
+  .cart-fly-clone{
+    position:fixed; z-index:200; pointer-events:none;
+    border-radius:var(--radius-sm); box-shadow:var(--shadow-2);
+    overflow:hidden; background:var(--surface-alt);
+    animation: cartFly calc(650ms * var(--motion-scale)) cubic-bezier(.3,.6,.35,1) forwards;
+  }
+  @keyframes cartFly{
+    0%{ transform:translate(0,0) scale(1); opacity:1; }
+    75%{ opacity:1; }
+    100%{ transform:translate(var(--fly-dx), var(--fly-dy)) scale(.12); opacity:0; }
+  }
   .brand-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
   .brand-name{ font-weight:800; font-size:1.05rem; letter-spacing:-.01em; white-space:nowrap; }
   .brand-status{ display:flex; align-items:center; gap:6px; font-size:.76rem; color:var(--text-muted); white-space:nowrap; }
@@ -680,6 +712,15 @@
 </style>
 </head>
 <body>
+
+<div id="loadingSplash" class="loading-splash" aria-hidden="true">
+  <div class="loading-splash-logo" id="splashLogo">
+    <svg class="brand-logo-mark" viewBox="0 0 48 48" width="64" height="64" role="img" aria-label="Ember Table">
+      <rect x="1.5" y="1.5" width="45" height="45" rx="12" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="24" y="30" text-anchor="middle" font-size="16" font-weight="800" fill="currentColor" font-family="var(--font-body)">ET</text>
+    </svg>
+  </div>
+</div>
 
 <a class="skip-link" href="#mainContent" data-i18n="skipToContent">Aller au contenu principal</a>
 
@@ -1249,6 +1290,7 @@ const prefsCloseBtn = document.getElementById("prefsCloseBtn");
 const callTableInput = document.getElementById("callTableInput");
 const callWaiterBtn = document.getElementById("callWaiterBtn");
 const callWaiterHint = document.getElementById("callWaiterHint");
+const loadingSplash = document.getElementById("loadingSplash");
 const cartToggleBtn = document.getElementById("cartToggle");
 const cartCountEl = document.getElementById("cartCount");
 const cartOverlay = document.getElementById("cartOverlay");
@@ -1499,15 +1541,38 @@ heroCta.addEventListener("click", ()=>{ scrollToElement(menuSection); });
    ========================================================================= */
 function persistCart(){ saveToStorage(STORAGE_KEYS.cart, state.cart); }
 
-function addToCart(id){
+function addToCart(id, originEl){
   const item = menuItems.find(m=>m.id === id);
   if(!item || item.available === false) return;
   const existing = state.cart.find(c=>c.id === id);
   if(existing) existing.qty += 1; else state.cart.push({ id, qty:1 });
   persistCart();
   updateCartUI();
-  bumpCartCount();
+  if(!flyToCart(originEl)) bumpCartCount();
   showToast(t("toastAdded", { name: getName(item) }));
+}
+function flyToCart(originEl){
+  if(prefersReducedMotion || !originEl) return false;
+  const media = originEl.closest(".dish-card")?.querySelector(".dish-media");
+  if(!media) return false;
+  const originRect = media.getBoundingClientRect();
+  const targetRect = cartToggleBtn.getBoundingClientRect();
+  const clone = media.cloneNode(true);
+  clone.className = "cart-fly-clone";
+  clone.style.left = originRect.left + "px";
+  clone.style.top = originRect.top + "px";
+  clone.style.width = originRect.width + "px";
+  clone.style.height = originRect.height + "px";
+  const dx = (targetRect.left + targetRect.width / 2) - (originRect.left + originRect.width / 2);
+  const dy = (targetRect.top + targetRect.height / 2) - (originRect.top + originRect.height / 2);
+  clone.style.setProperty("--fly-dx", dx + "px");
+  clone.style.setProperty("--fly-dy", dy + "px");
+  document.body.appendChild(clone);
+  let landed = false;
+  const land = ()=>{ if(landed) return; landed = true; clone.remove(); bumpCartCount(); };
+  clone.addEventListener("animationend", land, { once:true });
+  window.setTimeout(land, 750); // backstop in case the tab is backgrounded and the animation never fires
+  return true;
 }
 function changeQty(id, delta){
   const line = state.cart.find(c=>c.id === id);
@@ -1645,7 +1710,7 @@ checkoutBarBtn.addEventListener("click", openCart);
 menuSection.addEventListener("click", (e)=>{
   const addBtn = e.target.closest(".btn-add");
   if(!addBtn || addBtn.disabled) return;
-  addToCart(addBtn.dataset.addId);
+  addToCart(addBtn.dataset.addId, addBtn);
 });
 
 /* =========================================================================
@@ -2109,6 +2174,8 @@ async function fetchRestaurantInfo(){
       restaurantConfig.logoImage = info.logoImage;
       const brandLogoFrame = document.getElementById("brandLogoFrame");
       if(brandLogoFrame) brandLogoFrame.innerHTML = `<img src="${escapeHtml(restaurantConfig.logoImage)}" alt="${escapeHtml(restaurantConfig.name)}">`;
+      const splashLogo = document.getElementById("splashLogo");
+      if(splashLogo) splashLogo.innerHTML = `<img src="${escapeHtml(restaurantConfig.logoImage)}" alt="${escapeHtml(restaurantConfig.name)}">`;
     }
     if(info.heroImage){
       restaurantConfig.heroImage = info.heroImage;
@@ -2162,6 +2229,16 @@ async function loadAndRenderMenu(){
 }
 menuRetryBtn.addEventListener("click", loadAndRenderMenu);
 
+function hideLoadingSplash(){
+  if(!loadingSplash) return;
+  if(prefersReducedMotion){ loadingSplash.remove(); return; }
+  loadingSplash.classList.add("is-hidden");
+  let removed = false;
+  const finish = ()=>{ if(removed) return; removed = true; loadingSplash.remove(); };
+  loadingSplash.addEventListener("transitionend", finish, { once:true });
+  window.setTimeout(finish, 500); // backstop in case the tab is backgrounded and the transition never fires
+}
+
 async function init(){
   revealObserver = new IntersectionObserver((entries)=>{
     entries.forEach(entry=>{
@@ -2204,6 +2281,7 @@ async function init(){
   updateHeaderScrollState();
 
   await loadAndRenderMenu();
+  hideLoadingSplash();
   await checkTrackQueryParam();
   updateOrderResumeBanner();
 }
