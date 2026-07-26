@@ -31,6 +31,10 @@ async function initialize() {
   // them (they were never reachable via a saved token anyway).
   await db.collection("orders").createIndex({ trackingToken: 1 }, { unique: true, sparse: true });
   await db.collection("users").createIndex({ username: 1 }, { unique: true });
+  await db.collection("assistance_calls").createIndex({ status: 1, createdAt: 1 });
+  // Low-volume, ephemeral collection — auto-clean 24h after creation regardless
+  // of whether a call was ever acknowledged, so it never needs manual pruning.
+  await db.collection("assistance_calls").createIndex({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 });
 
   await seedMenuIfEmpty(db);
   await seedUsersIfEmpty(db);
@@ -75,11 +79,14 @@ async function seedMenuIfEmpty(db) {
     defaultTheme: r.defaultTheme,
     animationIntensity: r.animationIntensity,
     heroImage: r.heroImage,
+    logoImage: r.logoImage,
     openingHours: { fr: r.openingHoursFr, en: r.openingHoursEn, ar: r.openingHoursAr },
     address: { fr: r.addressFr, en: r.addressEn, ar: r.addressAr },
     phone: r.phone,
     phoneHref: r.phoneHref,
-    social: { instagram: r.socialInstagram, facebook: r.socialFacebook, tiktok: r.socialTiktok }
+    social: { instagram: r.socialInstagram, facebook: r.socialFacebook, tiktok: r.socialTiktok },
+    googleMapsUrl: r.googleMapsUrl,
+    googleReviewUrl: r.googleReviewUrl
   });
 
   console.log(`[db] Seeded ${seed.categories.length} categories and ${seed.menuItems.length} menu items.`);

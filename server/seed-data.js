@@ -105,6 +105,7 @@ const restaurantInfo = {
   defaultTheme: "dark",
   animationIntensity: "subtle",
   heroImage: "images/hero/hero-signature-dish.jpg",
+  logoImage: "",
   openingHoursFr: "12h00–23h30",
   openingHoursEn: "12:00–23:30",
   openingHoursAr: "12:00–23:30",
@@ -115,7 +116,9 @@ const restaurantInfo = {
   phoneHref: "tel:+212600000000",
   socialInstagram: "#",
   socialFacebook: "#",
-  socialTiktok: "#"
+  socialTiktok: "#",
+  googleMapsUrl: "",
+  googleReviewUrl: ""
 };
 
 module.exports = { categories, menuItems, restaurantInfo };

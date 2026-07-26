@@ -14,11 +14,14 @@ function mapInfo(doc) {
     defaultTheme: doc.defaultTheme,
     animationIntensity: doc.animationIntensity,
     heroImage: doc.heroImage,
+    logoImage: doc.logoImage || "",
     openingHours: doc.openingHours,
     address: doc.address,
     phone: doc.phone,
     phoneHref: doc.phoneHref,
-    social: doc.social
+    social: doc.social,
+    googleMapsUrl: doc.googleMapsUrl || "",
+    googleReviewUrl: doc.googleReviewUrl || ""
   };
 }
 
@@ -36,8 +39,9 @@ router.get("/admin/restaurant-info", requireOwner, async (req, res) => {
   res.json(mapInfo(doc));
 });
 
-// Only the "restaurant info" subset is editable from the CMS (hours, address,
-// phone, WhatsApp number, socials). Branding/theme fields are not accepted here.
+// The "restaurant info" subset is editable from the CMS (hours, address,
+// phone, WhatsApp number, socials, review/map links), plus the homepage
+// cover/hero image. Other branding/theme fields are not accepted here.
 router.put("/admin/restaurant-info", requireOwner, async (req, res) => {
   const b = req.body || {};
   const openingHours = b.openingHours || {};
@@ -48,17 +52,23 @@ router.put("/admin/restaurant-info", requireOwner, async (req, res) => {
     return res.status(400).json({ error: "invalid_input", message: "WhatsApp number must be digits only (country code + number, no + or spaces)." });
   }
 
+  const setFields = {
+    whatsappNumber: String(b.whatsappNumber),
+    openingHours: { fr: openingHours.fr || "", en: openingHours.en || "", ar: openingHours.ar || "" },
+    address: { fr: address.fr || "", en: address.en || "", ar: address.ar || "" },
+    phone: b.phone || "",
+    phoneHref: b.phoneHref || "",
+    social: { instagram: social.instagram || "#", facebook: social.facebook || "#", tiktok: social.tiktok || "#" },
+    googleMapsUrl: b.googleMapsUrl ? String(b.googleMapsUrl).trim() : "",
+    googleReviewUrl: b.googleReviewUrl ? String(b.googleReviewUrl).trim() : ""
+  };
+  // Only touched if a real path is provided — never wipe the cover image or
+  // logo to blank just because a request happened to omit it.
+  if (b.heroImage) setFields.heroImage = String(b.heroImage).trim();
+  if (b.logoImage) setFields.logoImage = String(b.logoImage).trim();
+
   const db = await ensureReady();
-  await db.collection("restaurant_info").updateOne({ _id: "main" }, {
-    $set: {
-      whatsappNumber: String(b.whatsappNumber),
-      openingHours: { fr: openingHours.fr || "", en: openingHours.en || "", ar: openingHours.ar || "" },
-      address: { fr: address.fr || "", en: address.en || "", ar: address.ar || "" },
-      phone: b.phone || "",
-      phoneHref: b.phoneHref || "",
-      social: { instagram: social.instagram || "#", facebook: social.facebook || "#", tiktok: social.tiktok || "#" }
-    }
-  });
+  await db.collection("restaurant_info").updateOne({ _id: "main" }, { $set: setFields });
 
   const updated = await db.collection("restaurant_info").findOne({ _id: "main" });
   res.json(mapInfo(updated));

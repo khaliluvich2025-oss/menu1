@@ -7,18 +7,24 @@ const state = {
   categories: [],   // from /api/admin/categories
   items: [],        // from /api/admin/menu-items
   orders: [],       // from /api/admin/orders
+  assistanceCalls: [], // pending "call a waiter" requests from /api/admin/assistance-calls
   lastSeenOrderId: null,
+  newOrderIds: new Set(), // ids currently flagged "new" — drives the highlighted-card render below
   view: "orders",
   statsPreset: "today",
   statsCustomStart: null,
   statsCustomEnd: null,
-  statsStatus: ""
+  statsStatus: "",
+  soundEnabled: true // placeholder, overwritten by loadSoundPref() at init
 };
 
-const ORDERS_POLL_MS = 8000;
+const ORDERS_POLL_MS = 3500; // was 8000 — snappier alerts, matches the public tracker's 4000ms cadence
 const STATS_POLL_MS = 20000;
+const NEW_ORDER_HIGHLIGHT_MS = 20000; // safety-net auto-clear for the "new" highlight if never acknowledged
 let ordersPollTimer = null;
 let statsPollTimer = null;
+const chimedOrderIds = new Set(); // ids already chimed for — never replay
+const newOrderTimers = new Map(); // orderId -> setTimeout handle, so it can be cancelled
 
 // ---------------------------------------------------------------- API
 async function api(method, path, body) {
@@ -59,6 +65,8 @@ const logoutBtn = document.getElementById("logoutBtn");
 const changePasswordBtn = document.getElementById("changePasswordBtn");
 const ordersContainer = document.getElementById("ordersContainer");
 const ordersBadge = document.getElementById("ordersBadge");
+const newOrderDot = document.getElementById("newOrderDot");
+const assistanceBanner = document.getElementById("assistanceBanner");
 const ordersEmptyHint = document.getElementById("ordersEmptyHint");
 const ordersAutoRefresh = document.getElementById("ordersAutoRefresh");
 const statsPresets = document.getElementById("statsPresets");
@@ -79,6 +87,7 @@ const restaurantInfoForm = document.getElementById("restaurantInfoForm");
 const infoError = document.getElementById("infoError");
 const modalRoot = document.getElementById("modalRoot");
 const toastEl = document.getElementById("adminToast");
+const soundToggle = document.getElementById("soundToggle");
 
 // ---------------------------------------------------------------- Toast
 let toastTimer = null;
@@ -89,6 +98,61 @@ function showToast(message, isError) {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2600);
 }
+
+// ---------------------------------------------------------------- Sound
+// A short two-tone chime, synthesized with the Web Audio API rather than a
+// sampled/licensed audio file — no external asset, and no ambiguity about
+// where the sound "came from" since nothing is copied from any other app.
+const SOUND_PREF_KEY = "emberTable.admin.soundEnabled";
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playTone(ctx, freq, startTime, duration, gainPeak) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(gainPeak, startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.02);
+}
+function playChime() {
+  if (!state.soundEnabled) return;
+  const ctx = getAudioContext();
+  if (ctx.state !== "running") return; // not unlocked by a gesture yet this load — skip silently, never fake success
+  const now = ctx.currentTime;
+  playTone(ctx, 880, now, 0.18, 0.18);          // A5
+  playTone(ctx, 1318.5, now + 0.12, 0.28, 0.16); // E6 — gentle rising "ding-ding"
+}
+function unlockAudioOnce() {
+  const ctx = getAudioContext();
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+  document.removeEventListener("click", unlockAudioOnce);
+}
+document.addEventListener("click", unlockAudioOnce);
+
+function loadSoundPref() {
+  try {
+    const raw = localStorage.getItem(SOUND_PREF_KEY);
+    return raw === null ? true : raw === "true"; // default ON the first time
+  } catch (e) {
+    return true; // localStorage unavailable — default ON, never throw
+  }
+}
+function saveSoundPref(enabled) {
+  try { localStorage.setItem(SOUND_PREF_KEY, String(enabled)); } catch (e) { /* ignore */ }
+}
+state.soundEnabled = loadSoundPref();
+soundToggle.checked = state.soundEnabled;
+soundToggle.addEventListener("change", () => {
+  state.soundEnabled = soundToggle.checked;
+  saveSoundPref(state.soundEnabled);
+});
 
 // ---------------------------------------------------------------- Modal
 function closeModal() { modalRoot.innerHTML = ""; }
@@ -143,6 +207,7 @@ async function showApp() {
 
   await loadAll();
   await loadOrders();
+  await loadAssistanceCalls();
   startOrdersPolling();
 }
 
@@ -167,6 +232,9 @@ logoutBtn.addEventListener("click", async () => {
   await api("POST", "/auth/logout");
   state.user = null;
   state.lastSeenOrderId = null;
+  state.assistanceCalls = [];
+  clearAllNewOrderTimers();
+  chimedOrderIds.clear();
   stopOrdersPolling();
   stopStatsPolling();
   showLogin();
@@ -214,19 +282,65 @@ function formatOrderTime(isoDatetime) {
 async function loadOrders(silent) {
   try {
     const orders = await api("GET", "/admin/orders");
+    let newOrdersDetected = false;
     if (orders.length) {
       const newestId = orders[0].id;
       if (state.lastSeenOrderId !== null && newestId > state.lastSeenOrderId) {
-        const newCount = orders.filter((o) => o.id > state.lastSeenOrderId).length;
-        showToast(newCount === 1 ? "New order received." : `${newCount} new orders received.`);
+        const newOnes = orders.filter((o) => o.id > state.lastSeenOrderId);
+        newOrdersDetected = true;
+        showToast(newOnes.length === 1 ? "New order received." : `${newOnes.length} new orders received.`);
+
+        const unchimed = newOnes.filter((o) => !chimedOrderIds.has(o.id));
+        if (unchimed.length) {
+          playChime(); // one chime per poll tick, not per order
+          unchimed.forEach((o) => chimedOrderIds.add(o.id));
+        }
+        newOnes.forEach((o) => flagOrderAsNew(o.id));
       }
       state.lastSeenOrderId = newestId;
     }
     state.orders = orders;
     updateOrdersBadge();
+    if (newOrdersDetected) bumpOrdersBadge();
     if (state.view === "orders") renderOrders();
   } catch (err) {
     if (!silent) showToast(err.message || "Could not load orders.", true);
+  }
+}
+
+function updateNewOrderDot() {
+  newOrderDot.hidden = state.newOrderIds.size === 0;
+}
+function flagOrderAsNew(id) {
+  state.newOrderIds.add(id);
+  updateNewOrderDot();
+  if (newOrderTimers.has(id)) clearTimeout(newOrderTimers.get(id));
+  const timer = setTimeout(() => clearNewFlagByTimeout(id), NEW_ORDER_HIGHLIGHT_MS);
+  newOrderTimers.set(id, timer);
+}
+function clearNewFlagByTimeout(id) {
+  if (!state.newOrderIds.has(id)) return;
+  state.newOrderIds.delete(id);
+  newOrderTimers.delete(id);
+  updateNewOrderDot();
+  if (state.view === "orders") renderOrders();
+}
+function clearAllNewOrderTimers() {
+  newOrderTimers.forEach((timer) => clearTimeout(timer));
+  newOrderTimers.clear();
+  state.newOrderIds.clear();
+  updateNewOrderDot();
+}
+function dismissNewFlag(id, cardEl) {
+  if (!state.newOrderIds.has(id)) return;
+  state.newOrderIds.delete(id);
+  const timer = newOrderTimers.get(id);
+  if (timer) { clearTimeout(timer); newOrderTimers.delete(id); }
+  updateNewOrderDot();
+  if (cardEl) {
+    cardEl.classList.remove("is-new");
+    const pill = cardEl.querySelector(".order-new-pill");
+    if (pill) pill.remove();
   }
 }
 
@@ -235,16 +349,62 @@ function updateOrdersBadge() {
   ordersBadge.hidden = count === 0;
   ordersBadge.textContent = String(count);
 }
+function bumpOrdersBadge() {
+  ordersBadge.classList.remove("bump");
+  void ordersBadge.offsetWidth; // force reflow so the animation restarts on repeat triggers
+  ordersBadge.classList.add("bump");
+}
 
 function startOrdersPolling() {
   stopOrdersPolling();
   ordersPollTimer = setInterval(() => {
     if (ordersAutoRefresh.checked) loadOrders(true);
+    loadAssistanceCalls(); // always checked — not gated by the Orders auto-refresh toggle, calls are urgent regardless of view
   }, ORDERS_POLL_MS);
 }
 function stopOrdersPolling() {
   if (ordersPollTimer) { clearInterval(ordersPollTimer); ordersPollTimer = null; }
 }
+
+// ---------------------------------------------------------------- Assistance calls
+async function loadAssistanceCalls() {
+  try {
+    const calls = await api("GET", "/admin/assistance-calls");
+    const hasNew = calls.some((c) => !state.assistanceCalls.some((existing) => existing.id === c.id));
+    state.assistanceCalls = calls;
+    renderAssistanceBanner();
+    if (hasNew) playChime();
+  } catch (err) {
+    // silent on poll failures, matches loadOrders(true)'s behavior
+  }
+}
+function renderAssistanceBanner() {
+  if (!state.assistanceCalls.length) {
+    assistanceBanner.hidden = true;
+    assistanceBanner.innerHTML = "";
+    return;
+  }
+  assistanceBanner.hidden = false;
+  assistanceBanner.innerHTML = state.assistanceCalls.map((c) => `
+    <div class="assistance-call-row">
+      <span class="assistance-call-text">🔔 Table ${escapeHtml(c.table)} needs assistance</span>
+      <button type="button" class="btn btn-primary btn-small" data-ack="${c.id}">Acknowledge</button>
+    </div>
+  `).join("");
+}
+assistanceBanner.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-ack]");
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    await api("PATCH", `/admin/assistance-calls/${btn.dataset.ack}/acknowledge`);
+    state.assistanceCalls = state.assistanceCalls.filter((c) => c.id !== btn.dataset.ack);
+    renderAssistanceBanner();
+  } catch (err) {
+    btn.disabled = false;
+    showToast(err.message || "Could not acknowledge.", true);
+  }
+});
 
 function miniTrackerHtml(order) {
   if (ORDER_TERMINAL_STATUSES.has(order.status) && order.status !== "completed") {
@@ -271,6 +431,7 @@ function renderOrders() {
     const itemsHtml = order.items.map((it) => `<li>${it.qty}× ${escapeHtml(it.name)} — ${it.lineTotal.toFixed(2)} MAD</li>`).join("");
     const isTerminal = ORDER_TERMINAL_STATUSES.has(order.status);
     const nextStage = ORDER_STAGE_ORDER[ORDER_STAGE_ORDER.indexOf(order.status) + 1];
+    const isNew = state.newOrderIds.has(order.id);
 
     let actionsHtml = "";
     if (!isTerminal) {
@@ -289,9 +450,10 @@ function renderOrders() {
     }
 
     return `
-      <div class="order-card status-${order.status}">
+      <div class="order-card status-${order.status}${isNew ? " is-new" : ""}" data-id="${order.id}">
         <div class="order-card-head">
           <span class="order-ref">${escapeHtml(order.ref)}</span>
+          ${isNew ? '<span class="order-new-pill">New</span>' : ""}
           <span class="order-table">Table ${escapeHtml(order.table)}</span>
           <span class="order-status-badge status-${order.status}">${ORDER_STATUS_LABELS[order.status]}</span>
           <span class="order-time">${formatOrderTime(order.createdAt)}</span>
@@ -309,23 +471,29 @@ function renderOrders() {
 
 ordersContainer.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-order-action]");
-  if (!btn) return;
-  const id = btn.dataset.id;
-  const status = btn.dataset.orderAction;
-  const noteInput = ordersContainer.querySelector(`[data-note-for="${id}"]`);
-  const note = noteInput ? noteInput.value.trim() : "";
-  btn.disabled = true;
-  try {
-    const updated = await api("PATCH", `/admin/orders/${id}/status`, { status, note });
-    const idx = state.orders.findIndex((o) => o.id === updated.id);
-    if (idx !== -1) state.orders[idx] = updated;
-    updateOrdersBadge();
-    renderOrders();
-    showToast(`Order marked ${ORDER_STATUS_LABELS[status].toLowerCase()}.`);
-  } catch (err) {
-    btn.disabled = false;
-    showToast(err.message || "Could not update order.", true);
+  if (btn) {
+    const id = btn.dataset.id;
+    const status = btn.dataset.orderAction;
+    const noteInput = ordersContainer.querySelector(`[data-note-for="${id}"]`);
+    const note = noteInput ? noteInput.value.trim() : "";
+    btn.disabled = true;
+    try {
+      const updated = await api("PATCH", `/admin/orders/${id}/status`, { status, note });
+      const idx = state.orders.findIndex((o) => o.id === updated.id);
+      if (idx !== -1) state.orders[idx] = updated;
+      updateOrdersBadge();
+      renderOrders();
+      showToast(`Order marked ${ORDER_STATUS_LABELS[status].toLowerCase()}.`);
+    } catch (err) {
+      btn.disabled = false;
+      showToast(err.message || "Could not update order.", true);
+    }
+    return;
   }
+
+  // Any other click inside a specific order card acknowledges/dismisses its "new" highlight.
+  const card = e.target.closest(".order-card");
+  if (card && card.dataset.id) dismissNewFlag(card.dataset.id, card);
 });
 
 // ---------------------------------------------------------------- Change password
@@ -707,9 +875,17 @@ function openCategoryModal(cat) {
 async function loadRestaurantInfo() {
   try {
     const info = await api("GET", "/admin/restaurant-info");
+    document.getElementById("infoLogoImagePath").value = info.logoImage || "";
+    document.getElementById("infoLogoImagePreview").innerHTML = info.logoImage
+      ? `<img src="${escapeAttr(info.logoImage)}" alt="">` : "No photo";
+    document.getElementById("infoHeroImagePath").value = info.heroImage || "";
+    document.getElementById("infoHeroImagePreview").innerHTML = info.heroImage
+      ? `<img src="${escapeAttr(info.heroImage)}" alt="">` : "No photo";
     document.getElementById("infoWhatsapp").value = info.whatsappNumber;
     document.getElementById("infoPhone").value = info.phone;
     document.getElementById("infoPhoneHref").value = info.phoneHref;
+    document.getElementById("infoGoogleMaps").value = info.googleMapsUrl;
+    document.getElementById("infoGoogleReview").value = info.googleReviewUrl;
     document.getElementById("infoHoursFr").value = info.openingHours.fr;
     document.getElementById("infoHoursEn").value = info.openingHours.en;
     document.getElementById("infoHoursAr").value = info.openingHours.ar;
@@ -724,13 +900,47 @@ async function loadRestaurantInfo() {
   }
 }
 
+document.getElementById("infoLogoImageFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const preview = document.getElementById("infoLogoImagePreview");
+  preview.textContent = "Uploading…";
+  try {
+    const path = await uploadImage(file);
+    document.getElementById("infoLogoImagePath").value = path;
+    preview.innerHTML = `<img src="${escapeAttr(path)}" alt="">`;
+  } catch (err) {
+    preview.textContent = "Upload failed";
+    showToast(err.message || "Image upload failed.", true);
+  }
+});
+
+document.getElementById("infoHeroImageFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const preview = document.getElementById("infoHeroImagePreview");
+  preview.textContent = "Uploading…";
+  try {
+    const path = await uploadImage(file);
+    document.getElementById("infoHeroImagePath").value = path;
+    preview.innerHTML = `<img src="${escapeAttr(path)}" alt="">`;
+  } catch (err) {
+    preview.textContent = "Upload failed";
+    showToast(err.message || "Image upload failed.", true);
+  }
+});
+
 restaurantInfoForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   infoError.hidden = true;
   const payload = {
+    logoImage: document.getElementById("infoLogoImagePath").value.trim(),
+    heroImage: document.getElementById("infoHeroImagePath").value.trim(),
     whatsappNumber: document.getElementById("infoWhatsapp").value.trim(),
     phone: document.getElementById("infoPhone").value.trim(),
     phoneHref: document.getElementById("infoPhoneHref").value.trim(),
+    googleMapsUrl: document.getElementById("infoGoogleMaps").value.trim(),
+    googleReviewUrl: document.getElementById("infoGoogleReview").value.trim(),
     openingHours: {
       fr: document.getElementById("infoHoursFr").value.trim(),
       en: document.getElementById("infoHoursEn").value.trim(),

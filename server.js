@@ -31,6 +31,7 @@ const restaurantRoutes = require("./server/routes/restaurant");
 const uploadRoutes = require("./server/routes/upload");
 const ordersRoutes = require("./server/routes/orders");
 const statsRoutes = require("./server/routes/stats");
+const assistanceRoutes = require("./server/routes/assistance");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const PORT = process.env.PORT || 3000;
@@ -92,6 +93,7 @@ app.use("/api", restaurantRoutes);
 app.use("/api", uploadRoutes);
 app.use("/api", ordersRoutes);
 app.use("/api", statsRoutes);
+app.use("/api", assistanceRoutes);
 
 app.use("/api", (req, res) => res.status(404).json({ error: "not_found" }));
 
@@ -101,7 +103,14 @@ app.use("/api", (req, res) => res.status(404).json({ error: "not_found" }));
 // project docs). The /uploads mount stays Express-served either way since
 // uploaded files don't exist at build time; on Vercel they land in the
 // ephemeral /tmp (see server/env-paths.js) and won't persist across cold starts.
-app.use("/uploads", express.static(uploadsDir()));
+// uploadsDir() resolves to the "dishes" leaf folder (what multer writes into
+// — see server/routes/upload.js), but the URLs it hands back to the client
+// are "/uploads/dishes/<filename>" (one path segment deeper). Serving from
+// uploadsDir() itself here would only ever answer "/uploads/<filename>" —
+// confirmed live: every previously-uploaded dish photo 404'd because of this
+// exact mismatch. Serving from its parent instead makes the "dishes" segment
+// part of the URL, matching what upload.js actually returns.
+app.use("/uploads", express.static(path.join(uploadsDir(), "..")));
 app.use("/images", express.static(path.join(PUBLIC_DIR, "images")));
 app.use("/admin", express.static(path.join(PUBLIC_DIR, "admin")));
 

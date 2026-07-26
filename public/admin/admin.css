@@ -109,7 +109,20 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
   display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px;
   border-radius:999px; background:var(--ember); color:var(--text-on-ember); font-size:.68rem; font-weight:800; margin-inline-start:4px;
 }
+.nav-badge.bump{ animation: ordersBadgeBump .36s ease; }
+@keyframes ordersBadgeBump{ 0%{transform:scale(1);} 35%{transform:scale(1.35);} 100%{transform:scale(1);} }
+.new-order-dot{
+  display:inline-block; width:9px; height:9px; border-radius:50%;
+  background:var(--danger); margin-inline-start:5px; vertical-align:middle;
+  animation: newOrderDotPulse 1.6s ease-in-out infinite;
+}
+@keyframes newOrderDotPulse{
+  0%{ box-shadow:0 0 0 0 rgba(192,57,43,.55); }
+  70%{ box-shadow:0 0 0 6px rgba(192,57,43,0); }
+  100%{ box-shadow:0 0 0 0 rgba(192,57,43,0); }
+}
 .admin-user{ display:flex; align-items:center; gap:10px; }
+.sound-toggle-label{ font-size:.78rem; color:rgba(255,255,255,.7); font-weight:600; }
 .user-pill{ font-size:.78rem; color:rgba(255,255,255,.7); }
 .admin-user .btn-ghost{ color:#fff; border-color:rgba(255,255,255,.25); }
 .admin-user .btn-ghost:hover{ border-color:var(--ember); color:var(--ember); }
@@ -172,12 +185,25 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
 .category-row .cat-labels b{ font-weight:700; }
 .category-row .cat-labels span{ color:var(--text-muted); }
 
+/* ---------- ASSISTANCE CALLS ---------- */
+.assistance-banner{
+  background:var(--danger-bg); border-bottom:1px solid var(--danger);
+  padding:10px max(20px, calc((100% - 1100px) / 2 + 20px));
+}
+.assistance-call-row{
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:6px 0; max-width:1100px; margin:0 auto;
+}
+.assistance-call-row + .assistance-call-row{ border-top:1px solid rgba(192,57,43,.18); }
+.assistance-call-text{ font-weight:700; font-size:.9rem; color:var(--danger); }
+
 /* ---------- ORDERS ---------- */
 .auto-refresh-toggle{ flex-direction:row-reverse; font-size:.8rem; color:var(--text-muted); font-weight:600; gap:6px; }
 .auto-refresh-toggle input{ width:15px; height:15px; }
 .order-card{
   background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--border);
   border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:10px;
+  transition: padding .15s ease, box-shadow .15s ease, border-left-width .15s ease;
 }
 .order-card.status-received,
 .order-card.status-confirmed,
@@ -186,6 +212,22 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
 .order-card.status-completed{ border-left-color:var(--success); opacity:.75; }
 .order-card.status-cancelled,
 .order-card.status-rejected{ border-left-color:var(--danger); opacity:.6; }
+.order-new-pill{
+  font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.03em;
+  padding:2px 8px; border-radius:999px; background:var(--ember); color:var(--text-on-ember);
+}
+.order-card.is-new{
+  padding:20px 22px;
+  box-shadow:var(--shadow-2);
+  border-left-width:6px;
+  animation: orderCardArrive .3s ease;
+}
+.order-card.is-new .order-ref{ font-size:1.05rem; }
+.order-card.is-new .order-total{ font-size:1.05rem; }
+@keyframes orderCardArrive{
+  0%{ transform:scale(.97); opacity:.5; }
+  100%{ transform:scale(1); opacity:1; }
+}
 .order-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
 .order-card-head .order-ref{ font-weight:800; font-size:.95rem; }
 .order-card-head .order-table{ font-size:.82rem; color:var(--text-muted); }
