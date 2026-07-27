@@ -9,6 +9,7 @@ const express = require("express");
 // patches Express's routing layer to forward those rejections to next(err)
 // automatically, app-wide, with no per-route changes needed.
 require("express-async-errors");
+const helmet = require("helmet");
 const session = require("express-session");
 // connect-mongo ships as an ESM package with a generated CJS build; a plain
 // require() gets the module namespace object, not the class itself — the
@@ -48,6 +49,14 @@ const SESSION_SECRET = process.env.SESSION_SECRET || DEFAULT_SESSION_SECRET;
 const app = express();
 app.disable("x-powered-by");
 if (IS_VERCEL) app.set("trust proxy", 1); // needed for secure cookies behind Vercel's proxy/TLS termination
+
+// contentSecurityPolicy is off: every page here is one HTML file with
+// inline <style>/<script> blocks (no build step, no nonces), and Helmet's
+// default CSP blocks inline-everything — turning it on as-is would break
+// the whole site's styling and JS. Every other default (frameguard against
+// clickjacking, X-Content-Type-Options, HSTS reinforcement, Referrer-Policy,
+// etc.) is safe to keep as-is and doesn't touch how the pages render.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // Last-resort safety net: connect-mongo builds its own internal promise chain
 // off `clientPromise` (store.collectionP) with no rejection handler attached
