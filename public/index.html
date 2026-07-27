@@ -237,27 +237,38 @@
   .brand-status{ display:flex; align-items:center; gap:6px; font-size:.76rem; color:var(--text-muted); white-space:nowrap; }
   .status-dot{ width:7px; height:7px; border-radius:50%; background:#3FBE5F; box-shadow:0 0 0 3px color-mix(in srgb, #3FBE5F 25%, transparent); flex-shrink:0; }
 
-  /* ---------- UTILITY NAV (Menu / Preferences / Cart / Orders / Call Server) ----------
-     One nav, two presentations: a fixed bottom dock on mobile — with a single
-     shared indicator circle that glides to whichever item was last tapped,
-     raising its icon and returning the previous one to normal — and a plain
-     compact inline row in the header on desktop, since that header scrolls
-     away with the page there and doesn't need the same motion treatment. */
-  .utility-nav{ display:flex; align-items:center; gap:4px; flex-shrink:0; position:relative; }
+  /* ---------- UTILITY NAV ----------
+     Mobile: a floating rounded pill with 4 equal actions (Menu / Orders /
+     Cart / Preferences) — a single capsule indicator glides behind whichever
+     was last tapped, expanding to match its size — plus a separate, larger
+     floating circular "Call Waiter" CTA beside it. Desktop: the same 5
+     actions merge into one compact rounded row in the header, which scrolls
+     away with the page and doesn't need the same motion treatment. */
+  .utility-nav{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .utility-nav-pill{ display:flex; align-items:center; gap:2px; position:relative; }
   .utility-nav-btn{
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
     border:none; background:transparent; color:var(--text-muted); cursor:pointer;
-    padding:6px 8px; border-radius:var(--radius-sm); flex:1; position:relative;
+    padding:8px 8px; border-radius:999px; flex:1; position:relative;
     -webkit-tap-highlight-color:transparent;
-    transition: color var(--transition-fast), background-color var(--transition-fast);
+    transition: color var(--transition-fast);
   }
-  .utility-nav-btn:hover{ color:var(--text); background:var(--surface-alt); }
+  .utility-nav-btn:hover{ color:var(--text); }
   .utility-nav-icon, .utility-nav-icon-wrap{
     position:relative; z-index:1; width:20px; height:20px;
     display:flex; align-items:center; justify-content:center;
   }
   .utility-nav-icon svg{ width:100%; height:100%; }
-  .utility-nav-label{ font-size:.62rem; font-weight:700; white-space:nowrap; transition: color var(--transition-fast); }
+  .utility-nav-label{ position:relative; z-index:1; font-size:.6rem; font-weight:700; white-space:nowrap; transition: color var(--transition-fast); }
+  .utility-nav-indicator{
+    position:absolute; top:0; left:0; z-index:0; border-radius:999px;
+    background:var(--surface-alt); pointer-events:none;
+    transition: transform calc(300ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1),
+                width calc(300ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1),
+                height calc(300ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1);
+  }
+  .utility-nav-btn.is-active{ color:var(--text); }
+  .utility-nav-btn.is-active .utility-nav-label{ color:var(--text); }
 
   .cart-count{
     position:absolute; top:-6px; inset-inline-end:-8px;
@@ -270,35 +281,51 @@
   .cart-count.bump{ animation: cartBump calc(360ms * var(--motion-scale)) ease; }
   @keyframes cartBump{ 0%{transform:scale(1);} 35%{transform:scale(1.35);} 100%{transform:scale(1);} }
 
-  /* Mobile: fixed bottom dock with a sliding active-indicator circle */
-  @media (max-width:859px){
-    :root{ --dock-h: calc(84px + var(--safe-bottom)); }
-    .utility-nav{
-      position:fixed; left:0; right:0; bottom:0; z-index:60;
-      background:var(--surface); border-top:1px solid var(--border);
-      padding:6px 4px calc(6px + var(--safe-bottom));
-      box-shadow: 0 -6px 20px rgba(0,0,0,.14);
-    }
-    .utility-nav-indicator{
-      position:absolute; top:0; left:0; z-index:0; width:42px; height:42px; border-radius:50%;
-      background:var(--primary); box-shadow:var(--shadow-1); pointer-events:none;
-      transition: transform calc(300ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1);
-    }
-    .utility-nav-btn.is-active .utility-nav-icon,
-    .utility-nav-btn.is-active .utility-nav-icon-wrap{
-      color:var(--text-on-ember);
-      transform: translateY(-3px);
-      transition: color calc(280ms * var(--motion-scale)) ease, transform calc(300ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1);
-    }
-    .utility-nav-btn.is-active .utility-nav-label{ color:var(--text); }
+  /* Call Waiter — separate emphasized circular CTA, brand-colored */
+  .call-waiter-btn{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    border:none; background:transparent; cursor:pointer; flex-shrink:0; color:var(--text-muted);
+    -webkit-tap-highlight-color:transparent;
+    transition: color var(--transition-fast);
   }
-  /* Desktop: no sliding indicator (header scrolls away with the page) — a
-     simple hover/active color change is enough. */
+  .call-waiter-btn:hover{ color:var(--text); }
+  .call-waiter-icon-wrap{
+    width:46px; height:46px; border-radius:50%; background:var(--primary); color:var(--text-on-ember);
+    display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow-1);
+    transition: transform var(--transition-fast), width var(--transition-fast), height var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast);
+  }
+  .call-waiter-btn:active .call-waiter-icon-wrap{ transform:scale(.92); }
+  .call-waiter-icon{ width:22px; height:22px; }
+  .call-waiter-icon svg{ width:100%; height:100%; }
+  .call-waiter-label{ font-size:.6rem; font-weight:700; color:var(--text); white-space:nowrap; }
+
+  /* Mobile: floating pill + separate floating circular CTA */
+  @media (max-width:859px){
+    :root{ --dock-h: calc(100px + var(--safe-bottom)); }
+    .utility-nav{
+      position:fixed; left:16px; right:16px; bottom: calc(14px + var(--safe-bottom)); z-index:60;
+      justify-content:space-between;
+    }
+    .utility-nav-pill{
+      flex:1; background:var(--surface); border:1px solid var(--border); border-radius:999px;
+      padding:5px; box-shadow:var(--shadow-2);
+    }
+  }
+  /* Desktop: everything merges into one compact rounded row that scrolls
+     away with the header — no sliding indicator needed there. */
   @media (min-width:860px){
+    .utility-nav{
+      background:var(--surface); border:1px solid var(--border); border-radius:999px;
+      padding:4px; box-shadow:var(--shadow-1);
+    }
     .utility-nav-btn{ flex-direction:row; gap:8px; padding:8px 14px; flex:none; }
     .utility-nav-label{ font-size:.84rem; }
     .utility-nav-indicator{ display:none; }
-    .utility-nav-btn.is-active{ color:var(--text); background:var(--surface-alt); }
+    .call-waiter-btn{ flex-direction:row; gap:8px; padding:8px 14px; border-radius:999px; }
+    .call-waiter-btn:hover{ background:var(--surface-alt); }
+    .call-waiter-icon-wrap{ width:auto; height:auto; background:none; box-shadow:none; color:inherit; }
+    .call-waiter-icon{ width:20px; height:20px; }
+    .call-waiter-label{ font-size:.84rem; color:inherit; }
   }
 
   /* ---------- CALL SERVER CONFIRM DIALOG ---------- */
@@ -826,46 +853,50 @@
       </div>
     </div>
     <nav class="utility-nav" id="utilityNav" aria-label="Navigation principale">
-      <span class="utility-nav-indicator" id="utilityNavIndicator" aria-hidden="true"></span>
-      <button type="button" class="utility-nav-btn" id="navMenuBtn">
-        <span class="utility-nav-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </span>
-        <span class="utility-nav-label" data-i18n="navMenu">Menu</span>
-      </button>
-      <button type="button" class="utility-nav-btn" id="prefsToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="prefsPanel">
-        <span class="utility-nav-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <circle cx="9" cy="6" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
-            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <circle cx="16" cy="12" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
-            <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <circle cx="11" cy="18" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
-          </svg>
-        </span>
-        <span class="utility-nav-label" data-i18n="navPreferences">Préférences</span>
-      </button>
-      <button type="button" class="utility-nav-btn utility-nav-btn-cart" id="cartToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="cartPanel">
-        <span class="utility-nav-icon-wrap">
+      <div class="utility-nav-pill" id="utilityNavPill">
+        <span class="utility-nav-indicator" id="utilityNavIndicator" aria-hidden="true"></span>
+        <button type="button" class="utility-nav-btn" id="navMenuBtn">
           <span class="utility-nav-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           </span>
-          <span class="cart-count is-zero" id="cartCount" aria-hidden="true">0</span>
+          <span class="utility-nav-label" data-i18n="navMenu">Menu</span>
+        </button>
+        <button type="button" class="utility-nav-btn" id="navOrdersBtn" aria-haspopup="dialog" aria-controls="cartPanel">
+          <span class="utility-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M7 3h10a1 1 0 0 1 1 1v16l-3-2-2 2-2-2-2 2-3-2V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </span>
+          <span class="utility-nav-label" data-i18n="navOrders">Commandes</span>
+        </button>
+        <button type="button" class="utility-nav-btn utility-nav-btn-cart" id="cartToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="cartPanel">
+          <span class="utility-nav-icon-wrap">
+            <span class="utility-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </span>
+            <span class="cart-count is-zero" id="cartCount" aria-hidden="true">0</span>
+          </span>
+          <span class="utility-nav-label" data-i18n="navCart">Panier</span>
+        </button>
+        <button type="button" class="utility-nav-btn" id="prefsToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="prefsPanel">
+          <span class="utility-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="9" cy="6" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
+              <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="16" cy="12" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
+              <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="11" cy="18" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+          </span>
+          <span class="utility-nav-label" data-i18n="navPreferences">Préférences</span>
+        </button>
+      </div>
+      <button type="button" class="call-waiter-btn" id="navCallServerBtn" aria-haspopup="dialog" aria-controls="callServerDialog">
+        <span class="call-waiter-icon-wrap">
+          <span class="call-waiter-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 18h16M5 18a7 7 0 0 1 14 0M12 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
         </span>
-        <span class="utility-nav-label" data-i18n="navCart">Panier</span>
-      </button>
-      <button type="button" class="utility-nav-btn" id="navOrdersBtn" aria-haspopup="dialog" aria-controls="cartPanel">
-        <span class="utility-nav-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M7 3h10a1 1 0 0 1 1 1v16l-3-2-2 2-2-2-2 2-3-2V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </span>
-        <span class="utility-nav-label" data-i18n="navOrders">Commandes</span>
-      </button>
-      <button type="button" class="utility-nav-btn" id="navCallServerBtn" aria-haspopup="dialog" aria-controls="callServerDialog">
-        <span class="utility-nav-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M4 18h16M5 18a7 7 0 0 1 14 0M12 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        <span class="utility-nav-label" data-i18n="navCallServer">Appeler</span>
+        <span class="call-waiter-label" data-i18n="navCallServer">Call Waiter</span>
       </button>
     </nav>
   </div>
@@ -1120,7 +1151,7 @@ const translations = {
     callWaiterSent:"Un serveur a été prévenu, il arrive.",
     callWaiterError:"Impossible d'appeler. Merci de réessayer.",
     callWaiterCooldown:"Merci de patienter {seconds}s avant un nouvel appel.",
-    navMenu:"Menu", navPreferences:"Préférences", navCart:"Panier", navOrders:"Commandes", navCallServer:"Appeler",
+    navMenu:"Menu", navPreferences:"Préférences", navCart:"Panier", navOrders:"Commandes", navCallServer:"Serveur",
     callServerConfirmTitle:"Appeler un serveur ?",
     callServerConfirmText:"Un serveur sera prévenu et viendra à votre table.",
     callServerConfirmButton:"Confirmer", callServerCancel:"Annuler",
@@ -1188,7 +1219,7 @@ const translations = {
     callWaiterSent:"A staff member has been notified and is on the way.",
     callWaiterError:"Couldn't send your request. Please try again.",
     callWaiterCooldown:"Please wait {seconds}s before calling again.",
-    navMenu:"Menu", navPreferences:"Preferences", navCart:"Cart", navOrders:"Orders", navCallServer:"Call",
+    navMenu:"Menu", navPreferences:"Preferences", navCart:"Cart", navOrders:"Orders", navCallServer:"Call Waiter",
     callServerConfirmTitle:"Call a server?",
     callServerConfirmText:"A staff member will be notified and come to your table.",
     callServerConfirmButton:"Confirm", callServerCancel:"Cancel",
@@ -1256,7 +1287,7 @@ const translations = {
     callWaiterSent:"تم إبلاغ أحد أفراد الطاقم، إنه في طريقه إليك.",
     callWaiterError:"تعذّر إرسال الطلب. يرجى المحاولة مرة أخرى.",
     callWaiterCooldown:"يرجى الانتظار {seconds} ثانية قبل الاتصال مرة أخرى.",
-    navMenu:"القائمة", navPreferences:"التفضيلات", navCart:"السلة", navOrders:"الطلبات", navCallServer:"نداء",
+    navMenu:"القائمة", navPreferences:"التفضيلات", navCart:"السلة", navOrders:"الطلبات", navCallServer:"النادل",
     callServerConfirmTitle:"استدعاء نادل؟",
     callServerConfirmText:"سيتم إخطار أحد أفراد الطاقم وسيأتي إلى طاولتك.",
     callServerConfirmButton:"تأكيد", callServerCancel:"إلغاء",
@@ -1410,6 +1441,7 @@ const prefsOverlay = document.getElementById("prefsOverlay");
 const prefsPanel = document.getElementById("prefsPanel");
 const prefsCloseBtn = document.getElementById("prefsCloseBtn");
 const utilityNav = document.getElementById("utilityNav");
+const utilityNavPill = document.getElementById("utilityNavPill");
 const utilityNavIndicator = document.getElementById("utilityNavIndicator");
 const navMenuBtn = document.getElementById("navMenuBtn");
 const navOrdersBtn = document.getElementById("navOrdersBtn");
@@ -1869,22 +1901,23 @@ function openOrdersTracker(){
 }
 navOrdersBtn.addEventListener("click", openOrdersTracker);
 
-// Mobile dock's sliding active-indicator: a single circle that glides behind
-// whichever nav item was last tapped (Cart by default), raising that icon and
-// letting the previous one settle back down. No-op-looking but harmless on
-// desktop, where the indicator is hidden via CSS. Positions are measured
-// live via getBoundingClientRect() rather than computed from a fixed
-// left-to-right formula, so this automatically tracks correctly under RTL.
+// Pill's sliding active-indicator: a single capsule that glides behind and
+// resizes to match whichever of the 4 pill items was last tapped (Cart by
+// default), independent of the separate Call Waiter CTA beside the pill.
+// No-op-looking but harmless on desktop, where the indicator is hidden via
+// CSS. Positions/sizes are measured live via getBoundingClientRect() rather
+// than a fixed left-to-right formula, so this tracks correctly under RTL.
 let activeNavBtn = null;
 function moveIndicatorTo(btn){
   if(!utilityNavIndicator || !btn) return;
-  const iconEl = btn.querySelector(".utility-nav-icon, .utility-nav-icon-wrap");
-  if(!iconEl) return;
-  const navRect = utilityNav.getBoundingClientRect();
-  const iconRect = iconEl.getBoundingClientRect();
-  const size = utilityNavIndicator.offsetWidth || 42;
-  const x = (iconRect.left - navRect.left) + iconRect.width / 2 - size / 2;
-  const y = (iconRect.top - navRect.top) + iconRect.height / 2 - size / 2;
+  const pillRect = utilityNavPill.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  // position:absolute is relative to the pill's padding edge, not its
+  // border edge, so subtract the border width getBoundingClientRect() includes.
+  const x = btnRect.left - pillRect.left - utilityNavPill.clientLeft;
+  const y = btnRect.top - pillRect.top - utilityNavPill.clientTop;
+  utilityNavIndicator.style.width = `${btnRect.width}px`;
+  utilityNavIndicator.style.height = `${btnRect.height}px`;
   utilityNavIndicator.style.transform = `translate(${x}px, ${y}px)`;
 }
 function setActiveNav(btn){
@@ -1894,7 +1927,7 @@ function setActiveNav(btn){
   activeNavBtn = btn;
   moveIndicatorTo(btn);
 }
-utilityNav.addEventListener("click", (e)=>{
+utilityNavPill.addEventListener("click", (e)=>{
   const btn = e.target.closest(".utility-nav-btn");
   if(btn) setActiveNav(btn);
 });
