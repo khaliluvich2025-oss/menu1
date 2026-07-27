@@ -730,12 +730,21 @@
   .tracker-terminal-title{ font-size:1.05rem; font-weight:800; }
   .tracker-terminal-text{ color:var(--text-muted); font-size:.86rem; max-width:36ch; }
 
-  .cart-item{ display:flex; align-items:center; gap:12px; padding-block:12px; border-bottom:1px solid var(--border); }
-  .cart-item:last-child{ border-bottom:none; }
+  .cart-line{ padding-block:12px; border-bottom:1px solid var(--border); }
+  .cart-line:last-child{ border-bottom:none; }
+  .cart-item{ display:flex; align-items:center; gap:12px; }
   .cart-item .dish-media{ width:56px; height:56px; border-radius:var(--radius-sm); flex-shrink:0; }
   .cart-item-info{ flex:1; min-width:0; }
   .cart-item-name{ font-size:.88rem; font-weight:700; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cart-item-unit{ font-size:.76rem; color:var(--text-muted); }
+  .cart-item-note{ margin-top:8px; margin-inline-start:68px; }
+  .cart-item-note-input{
+    width:100%; border:1px solid var(--border); border-radius:var(--radius-sm);
+    background:var(--surface-alt); color:var(--text); font-size:.8rem;
+    padding:7px 10px; font-family:var(--font-body);
+  }
+  .cart-item-note-input::placeholder{ color:var(--text-muted); }
+  .cart-item-note-input:focus{ outline:none; border-color:var(--primary); }
   .qty-stepper{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:4px; flex-shrink:0; }
   .qty-btn{
     width:28px; height:28px; border-radius:50%; border:none; background:var(--surface-alt); color:var(--text);
@@ -1177,6 +1186,7 @@ const translations = {
     cartEmptyText:"Ajoutez des plats depuis le menu pour commencer votre commande.",
     cartEmptyCta:"Voir le menu",
     quantityDecrease:"Diminuer la quantité", quantityIncrease:"Augmenter la quantité",
+    cartItemNotePlaceholder:"Note (ex. sans oignons)",
     cartTotal:"Total",
     tableLabel:"Numéro de table", tablePlaceholder:"ex. 12",
     tableRequired:"Merci d'indiquer votre numéro de table avant d'envoyer la commande.",
@@ -1245,6 +1255,7 @@ const translations = {
     cartEmptyText:"Add dishes from the menu to start your order.",
     cartEmptyCta:"See the menu",
     quantityDecrease:"Decrease quantity", quantityIncrease:"Increase quantity",
+    cartItemNotePlaceholder:"Note (e.g. no onions)",
     cartTotal:"Total",
     tableLabel:"Table number", tablePlaceholder:"e.g. 12",
     tableRequired:"Please enter your table number before sending the order.",
@@ -1313,6 +1324,7 @@ const translations = {
     cartEmptyText:"أضف أطباقًا من القائمة لبدء طلبك.",
     cartEmptyCta:"عرض القائمة",
     quantityDecrease:"إنقاص الكمية", quantityIncrease:"زيادة الكمية",
+    cartItemNotePlaceholder:"ملاحظة (مثال: بدون بصل)",
     cartTotal:"الإجمالي",
     tableLabel:"رقم الطاولة", tablePlaceholder:"مثال: 12",
     tableRequired:"يرجى إدخال رقم الطاولة قبل إرسال الطلب.",
@@ -1717,7 +1729,7 @@ function addToCart(id, originEl){
   const item = menuItems.find(m=>m.id === id);
   if(!item || item.available === false) return;
   const existing = state.cart.find(c=>c.id === id);
-  if(existing) existing.qty += 1; else state.cart.push({ id, qty:1 });
+  if(existing) existing.qty += 1; else state.cart.push({ id, qty:1, note:"" });
   persistCart();
   updateCartUI();
   if(!flyToCart(originEl)) bumpCartCount();
@@ -1759,8 +1771,14 @@ function cartLines(){
     const item = menuItems.find(m=>m.id === c.id);
     if(!item) return null;
     const unit = item.discountPrice != null ? item.discountPrice : item.price;
-    return { item, qty: c.qty, unit, lineTotal: unit * c.qty };
+    return { item, qty: c.qty, unit, lineTotal: unit * c.qty, note: c.note || "" };
   }).filter(Boolean);
+}
+function updateCartItemNote(id, note){
+  const line = state.cart.find(c=>c.id === id);
+  if(!line) return;
+  line.note = note;
+  persistCart();
 }
 function cartTotals(){
   const lines = cartLines();
@@ -1795,18 +1813,23 @@ function renderCartBody(lines){
   stopOrderTrackerPolling();
   cartFooterForm.hidden = false;
   cartBody.innerHTML = lines.map(l=>`
-    <div class="cart-item" data-cart-id="${l.item.id}">
-      ${dishMediaMarkup(l.item)}
-      <div class="cart-item-info">
-        <p class="cart-item-name">${escapeHtml(getName(l.item))}</p>
-        <p class="cart-item-unit">${formatPrice(l.unit)}</p>
+    <div class="cart-line" data-cart-id="${l.item.id}">
+      <div class="cart-item">
+        ${dishMediaMarkup(l.item)}
+        <div class="cart-item-info">
+          <p class="cart-item-name">${escapeHtml(getName(l.item))}</p>
+          <p class="cart-item-unit">${formatPrice(l.unit)}</p>
+        </div>
+        <div class="qty-stepper">
+          <button type="button" class="qty-btn" data-qty-action="dec" aria-label="${t("quantityDecrease")}">−</button>
+          <span class="qty-value">${l.qty}</span>
+          <button type="button" class="qty-btn" data-qty-action="inc" aria-label="${t("quantityIncrease")}">+</button>
+        </div>
+        <p class="cart-item-total">${formatPrice(l.lineTotal)}</p>
       </div>
-      <div class="qty-stepper">
-        <button type="button" class="qty-btn" data-qty-action="dec" aria-label="${t("quantityDecrease")}">−</button>
-        <span class="qty-value">${l.qty}</span>
-        <button type="button" class="qty-btn" data-qty-action="inc" aria-label="${t("quantityIncrease")}">+</button>
+      <div class="cart-item-note">
+        <input type="text" class="cart-item-note-input" data-note-id="${l.item.id}" placeholder="${t("cartItemNotePlaceholder")}" value="${escapeHtml(l.note)}" maxlength="200">
       </div>
-      <p class="cart-item-total">${formatPrice(l.lineTotal)}</p>
     </div>
   `).join("");
   wireImageFallbacks(cartBody);
@@ -1824,12 +1847,17 @@ function updateCartUI(){
 cartBody.addEventListener("click", (e)=>{
   const btn = e.target.closest(".qty-btn");
   if(!btn) return;
-  const row = btn.closest(".cart-item");
+  const row = btn.closest(".cart-line");
   const id = row && row.dataset.cartId;
   if(!id) return;
   changeQty(id, btn.dataset.qtyAction === "inc" ? 1 : -1);
   const valueEl = row.querySelector(".qty-value");
   if(valueEl){ valueEl.classList.remove("bump"); void valueEl.offsetWidth; valueEl.classList.add("bump"); }
+});
+cartBody.addEventListener("input", (e)=>{
+  const input = e.target.closest(".cart-item-note-input");
+  if(!input) return;
+  updateCartItemNote(input.dataset.noteId, input.value);
 });
 
 let lastFocusedBeforeCart = null;
@@ -2153,7 +2181,7 @@ async function handleCheckout(){
       body: JSON.stringify({
         table: tableVal,
         lang: state.lang,
-        items: state.cart.map(c=>({ id:c.id, qty:c.qty }))
+        items: state.cart.map(c=>({ id:c.id, qty:c.qty, note:c.note || "" }))
       })
     });
     const data = await res.json().catch(()=>null);

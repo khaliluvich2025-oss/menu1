@@ -428,7 +428,7 @@ function miniTrackerHtml(order) {
 function renderOrders() {
   ordersEmptyHint.hidden = state.orders.length !== 0;
   ordersContainer.innerHTML = state.orders.map((order) => {
-    const itemsHtml = order.items.map((it) => `<li>${it.qty}× ${escapeHtml(it.name)} — ${it.lineTotal.toFixed(2)} MAD</li>`).join("");
+    const itemsHtml = order.items.map((it) => `<li>${it.qty}× ${escapeHtml(it.name)} — ${it.lineTotal.toFixed(2)} MAD${it.note ? `<div class="order-item-note">📝 ${escapeHtml(it.note)}</div>` : ""}</li>`).join("");
     const isTerminal = ORDER_TERMINAL_STATUSES.has(order.status);
     const nextStage = ORDER_STAGE_ORDER[ORDER_STAGE_ORDER.indexOf(order.status) + 1];
     const isNew = state.newOrderIds.has(order.id);

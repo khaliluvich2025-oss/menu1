@@ -242,6 +242,7 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
 .order-status-badge.status-rejected{ background:var(--danger-bg); color:var(--danger); }
 .order-items{ font-size:.84rem; margin:0 0 10px; padding-inline-start:18px; }
 .order-items li{ margin-bottom:2px; }
+.order-item-note{ font-size:.78rem; font-weight:700; color:#B4650E; margin:2px 0 4px; }
 
 .order-mini-tracker{ display:flex; align-items:center; gap:4px; margin-bottom:10px; }
 .mini-step{ flex:1; height:5px; border-radius:3px; background:var(--surface-alt); }

@@ -81,12 +81,14 @@ router.post("/orders", async (req, res) => {
     const dbItem = await db.collection("menu_items").findOne({ _id: line.id });
     if (!dbItem || !dbItem.available) continue; // skip items that vanished/sold out since being added to cart
     const unitPrice = dbItem.discountPrice != null ? dbItem.discountPrice : dbItem.price;
+    const note = line.note ? String(line.note).trim().slice(0, 200) : "";
     orderItems.push({
       id: dbItem._id,
       name: dbItem.name[resolvedLang],
       qty,
       unitPrice,
-      lineTotal: Math.round(unitPrice * qty * 100) / 100
+      lineTotal: Math.round(unitPrice * qty * 100) / 100,
+      note
     });
   }
 
