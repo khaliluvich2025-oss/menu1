@@ -2115,14 +2115,20 @@ dishOptionsCloseBtn.addEventListener("click", closeDishOptionsModal);
 dishOptionsOverlay.addEventListener("click", closeDishOptionsModal);
 
 menuSection.addEventListener("click", (e)=>{
+  const card = e.target.closest(".dish-card");
+  if(!card) return;
+  const item = menuItems.find(m=>m.id === card.dataset.dishId);
+  if(!item || item.available === false) return;
+  // Dishes with customization options: tapping anywhere on the card (image,
+  // name, or the Add button) opens the popup — not just the button, so
+  // customers can't accidentally skip picking a size/sauce.
+  if(item.optionGroups && item.optionGroups.length){
+    openDishOptionsModal(item);
+    return;
+  }
   const addBtn = e.target.closest(".btn-add");
   if(!addBtn || addBtn.disabled) return;
-  const item = menuItems.find(m=>m.id === addBtn.dataset.addId);
-  if(item && item.optionGroups && item.optionGroups.length){
-    openDishOptionsModal(item);
-  }else{
-    addToCart(addBtn.dataset.addId, addBtn);
-  }
+  addToCart(item.id, addBtn);
 });
 
 /* =========================================================================
