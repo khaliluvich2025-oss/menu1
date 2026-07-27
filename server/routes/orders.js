@@ -59,6 +59,27 @@ function parseObjectId(id) {
   try { return new ObjectId(id); } catch { return null; }
 }
 
+// Optional integration point: if the owner has set a Webhook URL in
+// Restaurant Info, POST every order event there (POS systems, Zapier, or
+// any custom middleware can pick it up). Best-effort and fire-and-forget —
+// a slow/unreachable endpoint must never delay or fail the customer's order.
+async function sendWebhook(event, order) {
+  try {
+    const db = await ensureReady();
+    const info = await db.collection("restaurant_info").findOne({ _id: "main" });
+    const url = info && info.webhookUrl;
+    if (!url) return;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, ...order }),
+      signal: AbortSignal.timeout(5000)
+    });
+  } catch (err) {
+    console.warn("Webhook delivery failed:", err.message);
+  }
+}
+
 // Public: the customer's cart is submitted here instead of opening WhatsApp.
 // Prices/names are re-resolved server-side from the current menu so a client
 // can't tamper with what it's charged.
@@ -118,6 +139,7 @@ router.post("/orders", async (req, res) => {
   doc._id = result.insertedId;
 
   res.status(201).json({ ...mapOrder(doc), history: publicHistory(doc), trackingToken });
+  sendWebhook("order.created", mapOrder(doc)); // fire-and-forget, after the response is already sent
 });
 
 // Public: live tracker polling target. Looked up by a random 256-bit
@@ -170,6 +192,7 @@ router.patch("/admin/orders/:id/status", requireAuth, async (req, res) => {
   const updated = await db.collection("orders").findOne({ _id });
 
   res.json({ ...mapOrder(updated), history: staffHistory(updated) });
+  sendWebhook("order.status_changed", mapOrder(updated));
 });
 
 module.exports = router;

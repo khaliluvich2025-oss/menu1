@@ -192,6 +192,11 @@
           <span>Google Review URL</span>
           <input type="text" id="infoGoogleReview" placeholder="https://g.page/r/.../review">
         </label>
+        <label class="field">
+          <span>Webhook URL (optional — POS / Zapier / custom integration)</span>
+          <input type="text" id="infoWebhookUrl" placeholder="https://your-pos-or-zapier-endpoint.com/...">
+          <p class="form-hint">Every new order and status change gets POSTed here as JSON. Leave blank to disable.</p>
+        </label>
 
         <fieldset class="field-group">
           <legend>Opening hours</legend>

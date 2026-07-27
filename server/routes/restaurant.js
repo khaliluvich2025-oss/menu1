@@ -36,7 +36,8 @@ router.get("/restaurant-info", async (req, res) => {
 router.get("/admin/restaurant-info", requireOwner, async (req, res) => {
   const db = await ensureReady();
   const doc = await db.collection("restaurant_info").findOne({ _id: "main" });
-  res.json(mapInfo(doc));
+  // webhookUrl is owner-only — never included in the public mapInfo() above.
+  res.json({ ...mapInfo(doc), webhookUrl: doc.webhookUrl || "" });
 });
 
 // The "restaurant info" subset is editable from the CMS (hours, address,
@@ -51,8 +52,13 @@ router.put("/admin/restaurant-info", requireOwner, async (req, res) => {
   if (!b.whatsappNumber || !/^[0-9]{8,15}$/.test(String(b.whatsappNumber))) {
     return res.status(400).json({ error: "invalid_input", message: "WhatsApp number must be digits only (country code + number, no + or spaces)." });
   }
+  const webhookUrl = b.webhookUrl ? String(b.webhookUrl).trim() : "";
+  if (webhookUrl && !/^https?:\/\/.+/i.test(webhookUrl)) {
+    return res.status(400).json({ error: "invalid_input", message: "Webhook URL must start with http:// or https://" });
+  }
 
   const setFields = {
+    webhookUrl,
     whatsappNumber: String(b.whatsappNumber),
     openingHours: { fr: openingHours.fr || "", en: openingHours.en || "", ar: openingHours.ar || "" },
     address: { fr: address.fr || "", en: address.en || "", ar: address.ar || "" },
@@ -71,7 +77,7 @@ router.put("/admin/restaurant-info", requireOwner, async (req, res) => {
   await db.collection("restaurant_info").updateOne({ _id: "main" }, { $set: setFields });
 
   const updated = await db.collection("restaurant_info").findOne({ _id: "main" });
-  res.json(mapInfo(updated));
+  res.json({ ...mapInfo(updated), webhookUrl: updated.webhookUrl || "" });
 });
 
 module.exports = router;

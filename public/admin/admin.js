@@ -920,6 +920,7 @@ async function loadRestaurantInfo() {
     document.getElementById("infoPhoneHref").value = info.phoneHref;
     document.getElementById("infoGoogleMaps").value = info.googleMapsUrl;
     document.getElementById("infoGoogleReview").value = info.googleReviewUrl;
+    document.getElementById("infoWebhookUrl").value = info.webhookUrl || "";
     document.getElementById("infoHoursFr").value = info.openingHours.fr;
     document.getElementById("infoHoursEn").value = info.openingHours.en;
     document.getElementById("infoHoursAr").value = info.openingHours.ar;
@@ -975,6 +976,7 @@ restaurantInfoForm.addEventListener("submit", async (e) => {
     phoneHref: document.getElementById("infoPhoneHref").value.trim(),
     googleMapsUrl: document.getElementById("infoGoogleMaps").value.trim(),
     googleReviewUrl: document.getElementById("infoGoogleReview").value.trim(),
+    webhookUrl: document.getElementById("infoWebhookUrl").value.trim(),
     openingHours: {
       fr: document.getElementById("infoHoursFr").value.trim(),
       en: document.getElementById("infoHoursEn").value.trim(),
