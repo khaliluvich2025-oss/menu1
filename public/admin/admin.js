@@ -15,7 +15,8 @@ const state = {
   statsCustomStart: null,
   statsCustomEnd: null,
   statsStatus: "",
-  soundEnabled: true // placeholder, overwritten by loadSoundPref() at init
+  soundEnabled: true, // placeholder, overwritten by loadSoundPref() at init
+  autoPrintEnabled: false // placeholder, overwritten by loadAutoPrintPref() at init
 };
 
 const ORDERS_POLL_MS = 3500; // was 8000 — snappier alerts, matches the public tracker's 4000ms cadence
@@ -88,6 +89,7 @@ const infoError = document.getElementById("infoError");
 const modalRoot = document.getElementById("modalRoot");
 const toastEl = document.getElementById("adminToast");
 const soundToggle = document.getElementById("soundToggle");
+const autoPrintToggle = document.getElementById("autoPrintToggle");
 
 // ---------------------------------------------------------------- Toast
 let toastTimer = null;
@@ -152,6 +154,26 @@ soundToggle.checked = state.soundEnabled;
 soundToggle.addEventListener("change", () => {
   state.soundEnabled = soundToggle.checked;
   saveSoundPref(state.soundEnabled);
+});
+
+// ---------------------------------------------------------------- Auto-print
+const AUTO_PRINT_PREF_KEY = "emberTable.admin.autoPrintEnabled";
+function loadAutoPrintPref() {
+  try {
+    const raw = localStorage.getItem(AUTO_PRINT_PREF_KEY);
+    return raw === "true"; // default OFF — opening a print dialog per order is disruptive until the owner opts in
+  } catch (e) {
+    return false;
+  }
+}
+function saveAutoPrintPref(enabled) {
+  try { localStorage.setItem(AUTO_PRINT_PREF_KEY, String(enabled)); } catch (e) { /* ignore */ }
+}
+state.autoPrintEnabled = loadAutoPrintPref();
+autoPrintToggle.checked = state.autoPrintEnabled;
+autoPrintToggle.addEventListener("change", () => {
+  state.autoPrintEnabled = autoPrintToggle.checked;
+  saveAutoPrintPref(state.autoPrintEnabled);
 });
 
 // ---------------------------------------------------------------- Modal
@@ -283,10 +305,11 @@ async function loadOrders(silent) {
   try {
     const orders = await api("GET", "/admin/orders");
     let newOrdersDetected = false;
+    let newOnes = [];
     if (orders.length) {
       const newestId = orders[0].id;
       if (state.lastSeenOrderId !== null && newestId > state.lastSeenOrderId) {
-        const newOnes = orders.filter((o) => o.id > state.lastSeenOrderId);
+        newOnes = orders.filter((o) => o.id > state.lastSeenOrderId);
         newOrdersDetected = true;
         showToast(newOnes.length === 1 ? "New order received." : `${newOnes.length} new orders received.`);
 
@@ -300,6 +323,7 @@ async function loadOrders(silent) {
       state.lastSeenOrderId = newestId;
     }
     state.orders = orders;
+    if (state.autoPrintEnabled) newOnes.forEach((o) => printOrderTicket(o.id));
     updateOrdersBadge();
     if (newOrdersDetected) bumpOrdersBadge();
     if (state.view === "orders") renderOrders();
