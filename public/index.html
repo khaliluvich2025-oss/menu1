@@ -350,7 +350,16 @@
 
   /* ---------- DISH CUSTOMIZATION POPUP ---------- */
   .dish-options-card{ max-width:420px; max-height:85vh; overflow-y:auto; position:relative; }
-  .dish-options-close{ position:absolute; top:12px; inset-inline-end:12px; z-index:1; background:var(--surface); box-shadow:var(--shadow-1); }
+  /* z-index:2 (not 1) and the extra class-qualified selector are both load-bearing:
+     .dish-image inside .dish-options-media is position:absolute;z-index:1 (needed for
+     the dish-card grid thumbnails elsewhere), so at z-index:1 the two tie and the image
+     — later in DOM order — painted over this button, silently eating every tap. And
+     .cart-close{background:transparent} sits later in this stylesheet than a plain
+     .dish-options-close rule, so with equal specificity it won and made the button
+     invisible even where the image didn't cover it. Confirmed live on mobile: the
+     close button was neither visible nor clickable, leaving no way to dismiss the
+     popup short of the browser back gesture (which navigated away from the site). */
+  .dish-options-dialog .dish-options-close{ position:absolute; top:12px; inset-inline-end:12px; z-index:2; background:var(--surface); box-shadow:var(--shadow-1); }
   .dish-options-media{ margin:-22px -22px 14px; }
   .dish-options-media .dish-media{ width:100%; aspect-ratio:16/10; border-radius:0; }
   .dish-options-card h2{ font-size:1.15rem; }
