@@ -54,6 +54,7 @@
     --radius-lg:22px;
     --header-h:64px;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --dock-h: 0px;
 
     /* --- Motion (scaled by data-motion / prefers-reduced-motion) --- */
     --motion-scale:1;
@@ -101,6 +102,7 @@
     line-height:1.45;
     -webkit-font-smoothing:antialiased;
     overflow-x:hidden;
+    padding-bottom: var(--dock-h);
     transition: background-color var(--transition-base), color var(--transition-base);
   }
   body.scroll-locked{ overflow:hidden; width:100%; }
@@ -235,19 +237,81 @@
   .brand-status{ display:flex; align-items:center; gap:6px; font-size:.76rem; color:var(--text-muted); white-space:nowrap; }
   .status-dot{ width:7px; height:7px; border-radius:50%; background:#3FBE5F; box-shadow:0 0 0 3px color-mix(in srgb, #3FBE5F 25%, transparent); flex-shrink:0; }
 
-  .header-controls{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  /* ---------- UTILITY NAV (Menu / Preferences / Cart / Orders / Call Server) ----------
+     One nav, two presentations: a fixed bottom dock on mobile, a compact inline
+     row in the header on desktop (see the min-width:860px override below). */
+  .utility-nav{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .utility-nav-btn{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    border:none; background:transparent; color:var(--text-muted); cursor:pointer;
+    padding:6px 8px; border-radius:var(--radius-sm); flex:1;
+    -webkit-tap-highlight-color:transparent;
+    transition: color var(--transition-fast), background-color var(--transition-fast);
+  }
+  .utility-nav-btn:hover{ color:var(--text); background:var(--surface-alt); }
+  .utility-nav-icon{ width:20px; height:20px; display:flex; align-items:center; justify-content:center; }
+  .utility-nav-icon svg{ width:100%; height:100%; }
+  .utility-nav-label{ font-size:.62rem; font-weight:700; white-space:nowrap; }
 
-  .cart-btn{ position:relative; }
+  .utility-nav-icon-wrap{
+    position:relative; width:42px; height:42px; border-radius:50%;
+    background:var(--primary); color:var(--text-on-ember);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:var(--shadow-1); margin-bottom:1px;
+    transition: transform var(--transition-fast);
+  }
+  .utility-nav-btn:active .utility-nav-icon-wrap{ transform:scale(.92); }
+  .utility-nav-btn-cart .utility-nav-icon-wrap .utility-nav-icon{ width:21px; height:21px; }
+  .utility-nav-btn-cart .utility-nav-label{ color:var(--text); }
+
   .cart-count{
     position:absolute; top:-4px; inset-inline-end:-4px;
     min-width:20px; height:20px; padding:0 4px; border-radius:999px;
-    background:var(--primary); color:var(--text-on-ember);
+    background:var(--surface); color:var(--primary);
     font-size:.68rem; font-weight:800; line-height:20px; text-align:center;
-    box-shadow: 0 0 0 2px var(--bg);
+    box-shadow: 0 0 0 2px var(--primary);
   }
   .cart-count.is-zero{ opacity:0; transform:scale(.6); }
   .cart-count.bump{ animation: cartBump calc(360ms * var(--motion-scale)) ease; }
   @keyframes cartBump{ 0%{transform:scale(1);} 35%{transform:scale(1.35);} 100%{transform:scale(1);} }
+
+  /* Mobile: fixed bottom dock */
+  @media (max-width:859px){
+    :root{ --dock-h: calc(84px + var(--safe-bottom)); }
+    .utility-nav{
+      position:fixed; left:0; right:0; bottom:0; z-index:60;
+      background:var(--surface); border-top:1px solid var(--border);
+      padding:6px 4px calc(6px + var(--safe-bottom));
+      box-shadow: 0 -6px 20px rgba(0,0,0,.14);
+    }
+  }
+  /* Desktop: compact inline row in the header */
+  @media (min-width:860px){
+    .utility-nav-btn{ flex-direction:row; gap:8px; padding:8px 14px; flex:none; }
+    .utility-nav-label{ font-size:.84rem; }
+    .utility-nav-icon-wrap{ width:32px; height:32px; margin-bottom:0; }
+    .utility-nav-btn-cart .utility-nav-icon-wrap .utility-nav-icon{ width:17px; height:17px; }
+  }
+
+  /* ---------- CALL SERVER CONFIRM DIALOG ---------- */
+  .confirm-dialog{
+    position:fixed; inset:0; z-index:120;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition: opacity var(--transition-base), visibility var(--transition-base);
+  }
+  .confirm-dialog.open{ opacity:1; visibility:visible; pointer-events:auto; }
+  .confirm-card{
+    width:100%; max-width:380px; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-md); box-shadow:var(--shadow-2); padding:22px;
+    transform:scale(.94) translateY(6px); transition: transform var(--transition-base);
+  }
+  .confirm-dialog.open .confirm-card{ transform:scale(1) translateY(0); }
+  .confirm-card h2{ font-size:1.05rem; margin-bottom:8px; }
+  .confirm-text{ color:var(--text-muted); font-size:.88rem; margin-bottom:16px; }
+  .confirm-card .table-field{ margin-bottom:4px; }
+  .confirm-actions{ display:flex; gap:10px; margin-top:16px; }
+  .confirm-actions .btn{ flex:1; }
 
   /* ---------- ORDER RESUME BANNER ---------- */
   .order-resume-banner{
@@ -664,7 +728,7 @@
 
   /* ---------- STICKY MOBILE CHECKOUT BAR ---------- */
   .checkout-bar{
-    position:fixed; bottom:0; inset-inline:0; z-index:55;
+    position:fixed; bottom:var(--dock-h); inset-inline:0; z-index:55;
     padding: 10px 16px calc(10px + var(--safe-bottom));
     display:flex; justify-content:center;
   }
@@ -684,7 +748,7 @@
 
   /* ---------- TOAST ---------- */
   .toast{
-    position:fixed; bottom:calc(90px + var(--safe-bottom)); left:50%; z-index:90;
+    position:fixed; bottom:calc(90px + var(--dock-h)); left:50%; z-index:90;
     transform: translate(-50%, 16px); opacity:0; pointer-events:none;
     background:var(--surface); color:var(--text); border:1px solid var(--border);
     padding:12px 18px; border-radius:var(--radius-md); box-shadow:var(--shadow-2);
@@ -748,23 +812,48 @@
         </span>
       </div>
     </div>
-    <div class="header-controls">
-      <button type="button" class="icon-btn prefs-toggle" id="prefsToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="prefsPanel">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          <circle cx="9" cy="6" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
-          <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          <circle cx="16" cy="12" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
-          <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          <circle cx="11" cy="18" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
-        </svg>
+    <nav class="utility-nav" id="utilityNav" aria-label="Navigation principale">
+      <button type="button" class="utility-nav-btn" id="navMenuBtn">
+        <span class="utility-nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </span>
+        <span class="utility-nav-label" data-i18n="navMenu">Menu</span>
       </button>
-      <button type="button" class="icon-btn cart-btn" id="cartToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="cartPanel">
-        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span class="cart-count is-zero" id="cartCount" aria-hidden="true">0</span>
-        <span class="sr-only" data-i18n="cartLabel">Panier</span>
+      <button type="button" class="utility-nav-btn" id="prefsToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="prefsPanel">
+        <span class="utility-nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="9" cy="6" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
+            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="16" cy="12" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
+            <line x1="4" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="11" cy="18" r="2.2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/>
+          </svg>
+        </span>
+        <span class="utility-nav-label" data-i18n="navPreferences">Préférences</span>
       </button>
-    </div>
+      <button type="button" class="utility-nav-btn utility-nav-btn-cart" id="cartToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="cartPanel">
+        <span class="utility-nav-icon-wrap">
+          <span class="utility-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 8h12l-1 12H7L6 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </span>
+          <span class="cart-count is-zero" id="cartCount" aria-hidden="true">0</span>
+        </span>
+        <span class="utility-nav-label" data-i18n="navCart">Panier</span>
+      </button>
+      <button type="button" class="utility-nav-btn" id="navOrdersBtn" aria-haspopup="dialog" aria-controls="cartPanel">
+        <span class="utility-nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M7 3h10a1 1 0 0 1 1 1v16l-3-2-2 2-2-2-2 2-3-2V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </span>
+        <span class="utility-nav-label" data-i18n="navOrders">Commandes</span>
+      </button>
+      <button type="button" class="utility-nav-btn" id="navCallServerBtn" aria-haspopup="dialog" aria-controls="callServerDialog">
+        <span class="utility-nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 18h16M5 18a7 7 0 0 1 14 0M12 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="utility-nav-label" data-i18n="navCallServer">Appeler</span>
+      </button>
+    </nav>
   </div>
 </header>
 
@@ -948,6 +1037,24 @@
   </div>
 </aside>
 
+<div class="cart-overlay" id="callServerOverlay"></div>
+<div class="confirm-dialog" id="callServerDialog" role="alertdialog" aria-modal="true" aria-labelledby="callServerDialogTitle" aria-hidden="true">
+  <div class="confirm-card">
+    <h2 id="callServerDialogTitle" data-i18n="callServerConfirmTitle">Appeler un serveur ?</h2>
+    <p class="confirm-text" data-i18n="callServerConfirmText">Un serveur sera prévenu et viendra à votre table.</p>
+    <div class="table-field">
+      <label for="callServerTableInput" data-i18n="tableLabel">Numéro de table</label>
+      <input type="text" inputmode="numeric" id="callServerTableInput" aria-describedby="callServerTableError">
+      <p class="field-error" id="callServerTableError" hidden></p>
+    </div>
+    <p class="assistance-hint" id="callServerDialogHint" aria-live="polite"></p>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-secondary" id="callServerCancelBtn" data-i18n="callServerCancel">Annuler</button>
+      <button type="button" class="btn btn-primary" id="callServerConfirmBtn" data-i18n="callServerConfirmButton">Confirmer</button>
+    </div>
+  </div>
+</div>
+
 <div class="checkout-bar" id="checkoutBar" hidden>
   <button type="button" class="checkout-bar-inner" id="checkoutBarBtn">
     <span class="checkout-bar-count" id="checkoutBarCount">0</span>
@@ -1009,6 +1116,10 @@ const translations = {
     callWaiterSent:"Un serveur a été prévenu, il arrive.",
     callWaiterError:"Impossible d'appeler. Merci de réessayer.",
     callWaiterCooldown:"Merci de patienter {seconds}s avant un nouvel appel.",
+    navMenu:"Menu", navPreferences:"Préférences", navCart:"Panier", navOrders:"Commandes", navCallServer:"Appeler",
+    callServerConfirmTitle:"Appeler un serveur ?",
+    callServerConfirmText:"Un serveur sera prévenu et viendra à votre table.",
+    callServerConfirmButton:"Confirmer", callServerCancel:"Annuler",
     cartLabel:"Panier",
     heroCta:"Voir le menu",
     searchLabel:"Rechercher un plat",
@@ -1075,6 +1186,10 @@ const translations = {
     callWaiterSent:"A staff member has been notified and is on the way.",
     callWaiterError:"Couldn't send your request. Please try again.",
     callWaiterCooldown:"Please wait {seconds}s before calling again.",
+    navMenu:"Menu", navPreferences:"Preferences", navCart:"Cart", navOrders:"Orders", navCallServer:"Call",
+    callServerConfirmTitle:"Call a server?",
+    callServerConfirmText:"A staff member will be notified and come to your table.",
+    callServerConfirmButton:"Confirm", callServerCancel:"Cancel",
     cartLabel:"Cart",
     heroCta:"See the menu",
     searchLabel:"Search for a dish",
@@ -1141,6 +1256,10 @@ const translations = {
     callWaiterSent:"تم إبلاغ أحد أفراد الطاقم، إنه في طريقه إليك.",
     callWaiterError:"تعذّر إرسال الطلب. يرجى المحاولة مرة أخرى.",
     callWaiterCooldown:"يرجى الانتظار {seconds} ثانية قبل الاتصال مرة أخرى.",
+    navMenu:"القائمة", navPreferences:"التفضيلات", navCart:"السلة", navOrders:"الطلبات", navCallServer:"نداء",
+    callServerConfirmTitle:"استدعاء نادل؟",
+    callServerConfirmText:"سيتم إخطار أحد أفراد الطاقم وسيأتي إلى طاولتك.",
+    callServerConfirmButton:"تأكيد", callServerCancel:"إلغاء",
     cartLabel:"السلة",
     heroCta:"عرض القائمة",
     searchLabel:"البحث عن طبق",
@@ -1293,6 +1412,16 @@ const prefsCloseBtn = document.getElementById("prefsCloseBtn");
 const callTableInput = document.getElementById("callTableInput");
 const callWaiterBtn = document.getElementById("callWaiterBtn");
 const callWaiterHint = document.getElementById("callWaiterHint");
+const navMenuBtn = document.getElementById("navMenuBtn");
+const navOrdersBtn = document.getElementById("navOrdersBtn");
+const navCallServerBtn = document.getElementById("navCallServerBtn");
+const callServerOverlay = document.getElementById("callServerOverlay");
+const callServerDialog = document.getElementById("callServerDialog");
+const callServerTableInput = document.getElementById("callServerTableInput");
+const callServerTableError = document.getElementById("callServerTableError");
+const callServerDialogHint = document.getElementById("callServerDialogHint");
+const callServerCancelBtn = document.getElementById("callServerCancelBtn");
+const callServerConfirmBtn = document.getElementById("callServerConfirmBtn");
 const loadingSplash = document.getElementById("loadingSplash");
 let splashRevealedAt = null;
 function revealSplashLogo(){
@@ -1711,10 +1840,32 @@ function closeCart(){
   document.removeEventListener("keydown", onCartKeydown);
   if(lastFocusedBeforeCart && typeof lastFocusedBeforeCart.focus === "function") lastFocusedBeforeCart.focus();
 }
-cartToggleBtn.addEventListener("click", ()=>{ state.cartOpen ? closeCart() : openCart(); });
+cartToggleBtn.addEventListener("click", ()=>{
+  if(state.cartOpen){ closeCart(); return; }
+  // Force the cart-lines view even if the tracker was showing (e.g. after
+  // tapping "Orders" without closing the panel first) — Cart always means Cart.
+  stopOrderTrackerPolling();
+  updateCartUI();
+  openCart();
+});
 cartCloseBtn.addEventListener("click", closeCart);
 cartOverlay.addEventListener("click", closeCart);
 checkoutBarBtn.addEventListener("click", openCart);
+
+navMenuBtn.addEventListener("click", ()=>{
+  closeCart();
+  closePrefsPanel();
+  scrollToElement(menuSection);
+});
+
+function openOrdersTracker(){
+  closePrefsPanel();
+  const savedOrder = loadFromStorage(STORAGE_KEYS.lastOrder, null);
+  const hasActive = savedOrder && savedOrder.trackingToken && !TRACKER_TERMINAL_STATUSES.includes(savedOrder.status) && !isOrderExpired(savedOrder);
+  if(hasActive) startOrderTrackerPolling(savedOrder.trackingToken); // renders the tracker regardless of current cart lines
+  if(!state.cartOpen) openCart();
+}
+navOrdersBtn.addEventListener("click", openOrdersTracker);
 
 menuSection.addEventListener("click", (e)=>{
   const addBtn = e.target.closest(".btn-add");
@@ -2097,15 +2248,10 @@ function updateCallWaiterButtonState(){
     if(callWaiterCooldownTimer){ clearInterval(callWaiterCooldownTimer); callWaiterCooldownTimer = null; }
   }
 }
-async function handleCallWaiter(){
-  const table = callTableInput.value.trim();
-  if(!table){
-    callWaiterHint.textContent = t("tableRequired");
-    callTableInput.focus();
-    return;
-  }
-  saveToStorage(STORAGE_KEYS.table, table);
-  callWaiterBtn.disabled = true;
+// Shared by both the Preferences-panel "Call a waiter" button and the
+// utility-nav "Call Server" confirm dialog, so a call sent from either one
+// puts BOTH surfaces on the same cooldown (can't bypass one via the other).
+async function submitAssistanceCall(table){
   try{
     const res = await fetch("/api/assistance-calls", {
       method: "POST",
@@ -2115,13 +2261,28 @@ async function handleCallWaiter(){
     const data = await res.json().catch(()=>null);
     if(res.status === 429 && data){
       callWaiterCooldownUntil = Date.now() + data.waitSeconds * 1000;
-    }else if(!res.ok || !data){
-      throw new Error("call_failed");
-    }else{
-      showToast(t("callWaiterSent"));
-      callWaiterCooldownUntil = Date.now() + 60000;
+      return { ok:false, cooldownSeconds: data.waitSeconds };
     }
+    if(!res.ok || !data) throw new Error("call_failed");
+    callWaiterCooldownUntil = Date.now() + 60000;
+    return { ok:true };
   }catch(e){
+    return { ok:false, error:true };
+  }
+}
+async function handleCallWaiter(){
+  const table = callTableInput.value.trim();
+  if(!table){
+    callWaiterHint.textContent = t("tableRequired");
+    callTableInput.focus();
+    return;
+  }
+  saveToStorage(STORAGE_KEYS.table, table);
+  callWaiterBtn.disabled = true;
+  const result = await submitAssistanceCall(table);
+  if(result.ok){
+    showToast(t("callWaiterSent"));
+  }else if(!result.cooldownSeconds){
     showToast(t("callWaiterError"));
     callWaiterBtn.disabled = false;
     return;
@@ -2131,6 +2292,74 @@ async function handleCallWaiter(){
   callWaiterCooldownTimer = setInterval(updateCallWaiterButtonState, 1000);
 }
 callWaiterBtn.addEventListener("click", handleCallWaiter);
+
+/* =========================================================================
+   CALL SERVER — utility-nav entry point for the same assistance-call
+   backend, gated behind an explicit confirm step (unlike the Preferences
+   panel's direct button) since it's reachable from a single tap anywhere.
+   ========================================================================= */
+let lastFocusedBeforeCallServer = null;
+function onCallServerDialogKeydown(e){ if(e.key === "Escape") closeCallServerDialog(); }
+function openCallServerDialog(){
+  if(Date.now() < callWaiterCooldownUntil){
+    showToast(t("callWaiterCooldown", { seconds: Math.ceil((callWaiterCooldownUntil - Date.now()) / 1000) }));
+    return;
+  }
+  closeCart();
+  closePrefsPanel();
+  lastFocusedBeforeCallServer = document.activeElement;
+  const savedTable = loadFromStorage(STORAGE_KEYS.table, "");
+  callServerTableInput.value = savedTable || "";
+  callServerTableError.hidden = true;
+  callServerTableInput.removeAttribute("aria-invalid");
+  callServerDialogHint.textContent = "";
+  callServerConfirmBtn.disabled = false;
+  callServerOverlay.classList.add("open");
+  callServerDialog.classList.add("open");
+  callServerDialog.setAttribute("aria-hidden", "false");
+  lockBodyScroll();
+  document.addEventListener("keydown", onCallServerDialogKeydown);
+  window.setTimeout(()=>{ callServerTableInput.focus(); }, prefersReducedMotion ? 0 : 80);
+}
+function closeCallServerDialog(){
+  callServerOverlay.classList.remove("open");
+  callServerDialog.classList.remove("open");
+  callServerDialog.setAttribute("aria-hidden", "true");
+  unlockBodyScroll();
+  document.removeEventListener("keydown", onCallServerDialogKeydown);
+  if(lastFocusedBeforeCallServer && typeof lastFocusedBeforeCallServer.focus === "function") lastFocusedBeforeCallServer.focus();
+}
+async function confirmCallServer(){
+  const table = callServerTableInput.value.trim();
+  if(!table){
+    callServerTableError.hidden = false;
+    callServerTableError.textContent = t("tableRequired");
+    callServerTableInput.setAttribute("aria-invalid", "true");
+    callServerTableInput.focus();
+    return;
+  }
+  callServerTableError.hidden = true;
+  callServerTableInput.removeAttribute("aria-invalid");
+  saveToStorage(STORAGE_KEYS.table, table);
+  callServerConfirmBtn.disabled = true;
+  const result = await submitAssistanceCall(table);
+  callServerConfirmBtn.disabled = false;
+  if(result.ok){
+    showToast(t("callWaiterSent"));
+    closeCallServerDialog();
+  }else if(result.cooldownSeconds){
+    callServerDialogHint.textContent = t("callWaiterCooldown", { seconds: result.cooldownSeconds });
+  }else{
+    callServerDialogHint.textContent = t("callWaiterError");
+  }
+  updateCallWaiterButtonState();
+  if(callWaiterCooldownTimer) clearInterval(callWaiterCooldownTimer);
+  callWaiterCooldownTimer = setInterval(updateCallWaiterButtonState, 1000);
+}
+navCallServerBtn.addEventListener("click", openCallServerDialog);
+callServerCancelBtn.addEventListener("click", closeCallServerDialog);
+callServerOverlay.addEventListener("click", closeCallServerDialog);
+callServerConfirmBtn.addEventListener("click", confirmCallServer);
 
 /* =========================================================================
    TOAST (aria-live add-to-cart feedback)
