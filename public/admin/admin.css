@@ -91,6 +91,29 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
 .form-hint{ color:var(--text-muted); font-size:.8rem; margin:0 0 4px; }
 .form-grid{ display:flex; flex-direction:column; gap:16px; max-width:640px; }
 
+/* ---------- DISH OPTION GROUPS (size, sauces, extras) ---------- */
+.option-group-block{
+  border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px;
+  display:flex; flex-direction:column; gap:8px; background:var(--bg);
+}
+.option-group-block + .option-group-block{ margin-top:10px; }
+.option-group-head{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.option-group-head input[type="text"]{ flex:1; min-width:110px; }
+.option-group-head select{ flex-shrink:0; }
+.option-group-head input, .option-group-head select{
+  border:1.5px solid var(--border); border-radius:var(--radius-sm);
+  padding:7px 9px; background:var(--surface); color:var(--text); font-size:.84rem;
+}
+.option-group-head .field-check{ flex-shrink:0; font-size:.8rem; }
+.option-list{ display:flex; flex-direction:column; gap:6px; }
+.option-row{ display:flex; gap:6px; align-items:center; }
+.option-row input[type="text"]{ flex:1; min-width:90px; }
+.option-row input[type="number"]{ width:80px; flex-shrink:0; }
+.option-row input{
+  border:1.5px solid var(--border); border-radius:var(--radius-sm);
+  padding:6px 8px; background:var(--surface); color:var(--text); font-size:.82rem;
+}
+
 /* ---------- APP SHELL ---------- */
 .admin-header{
   position:sticky; top:0; z-index:20; background:var(--carbon); color:#fff;
@@ -242,6 +265,7 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
 .order-status-badge.status-rejected{ background:var(--danger-bg); color:var(--danger); }
 .order-items{ font-size:.84rem; margin:0 0 10px; padding-inline-start:18px; }
 .order-items li{ margin-bottom:2px; }
+.order-item-options{ font-size:.78rem; color:var(--text-muted); margin:2px 0; }
 .order-item-note{ font-size:.78rem; font-weight:700; color:#B4650E; margin:2px 0 4px; }
 
 .order-mini-tracker{ display:flex; align-items:center; gap:4px; margin-bottom:10px; }
@@ -378,6 +402,7 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
   .ticket-divider{ border-top:1px dashed #000; margin:8px 0; }
   .ticket-items{ list-style:none; padding:0; margin:0; font-size:13px; }
   .ticket-items li{ margin-bottom:6px; }
+  .ticket-item-options{ font-size:12px; padding-inline-start:14px; }
   .ticket-item-note{ font-size:12px; font-weight:bold; padding-inline-start:14px; }
   .ticket-total{ display:flex; justify-content:space-between; font-weight:bold; font-size:14px; margin-top:8px; }
   .ticket-footer{ text-align:center; font-size:11px; margin-top:14px; }

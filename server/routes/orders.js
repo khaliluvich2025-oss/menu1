@@ -59,6 +59,32 @@ function parseObjectId(id) {
   try { return new ObjectId(id); } catch { return null; }
 }
 
+// Dish customization (size/sauces/extras): the client only ever sends
+// {groupId, optionIds} — names and prices are always re-resolved here from
+// the dish's CURRENT optionGroups, never trusted from the request, same
+// principle as the base price above. Resolved names/deltas are stored on
+// the order item so it still displays correctly even if the dish's options
+// change or are removed later.
+function resolveOrderOptions(dbItem, selectedOptions, lang) {
+  if (!Array.isArray(selectedOptions) || !Array.isArray(dbItem.optionGroups)) return [];
+  const resolved = [];
+  for (const sel of selectedOptions) {
+    const group = dbItem.optionGroups.find((g) => g.id === (sel && sel.groupId));
+    if (!group) continue;
+    const optionIds = Array.isArray(sel.optionIds) ? sel.optionIds : [];
+    const options = group.options.filter((o) => optionIds.includes(o.id));
+    if (!options.length) continue;
+    resolved.push({
+      groupName: group.name[lang] || group.name.en,
+      options: options.map((o) => ({ name: o.name[lang] || o.name.en, priceDelta: o.priceDelta || 0 }))
+    });
+  }
+  return resolved;
+}
+function optionsPriceDelta(resolvedOptions) {
+  return resolvedOptions.reduce((sum, g) => sum + g.options.reduce((s, o) => s + (o.priceDelta || 0), 0), 0);
+}
+
 // Optional integration point: if the owner has set a Webhook URL in
 // Restaurant Info, POST every order event there (POS systems, Zapier, or
 // any custom middleware can pick it up). Best-effort and fire-and-forget —
@@ -101,7 +127,9 @@ router.post("/orders", async (req, res) => {
     const qty = Math.max(1, parseInt(line.qty, 10) || 0);
     const dbItem = await db.collection("menu_items").findOne({ _id: line.id });
     if (!dbItem || !dbItem.available) continue; // skip items that vanished/sold out since being added to cart
-    const unitPrice = dbItem.discountPrice != null ? dbItem.discountPrice : dbItem.price;
+    const selectedOptions = resolveOrderOptions(dbItem, line.selectedOptions, resolvedLang);
+    const basePrice = dbItem.discountPrice != null ? dbItem.discountPrice : dbItem.price;
+    const unitPrice = basePrice + optionsPriceDelta(selectedOptions);
     const note = line.note ? String(line.note).trim().slice(0, 200) : "";
     orderItems.push({
       id: dbItem._id,
@@ -109,7 +137,8 @@ router.post("/orders", async (req, res) => {
       qty,
       unitPrice,
       lineTotal: Math.round(unitPrice * qty * 100) / 100,
-      note
+      note,
+      selectedOptions
     });
   }
 

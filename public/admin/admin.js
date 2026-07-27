@@ -452,7 +452,7 @@ function miniTrackerHtml(order) {
 function renderOrders() {
   ordersEmptyHint.hidden = state.orders.length !== 0;
   ordersContainer.innerHTML = state.orders.map((order) => {
-    const itemsHtml = order.items.map((it) => `<li>${it.qty}× ${escapeHtml(it.name)} — ${it.lineTotal.toFixed(2)} MAD${it.note ? `<div class="order-item-note">📝 ${escapeHtml(it.note)}</div>` : ""}</li>`).join("");
+    const itemsHtml = order.items.map((it) => `<li>${it.qty}× ${escapeHtml(it.name)} — ${it.lineTotal.toFixed(2)} MAD${formatItemOptions(it) ? `<div class="order-item-options">${escapeHtml(formatItemOptions(it))}</div>` : ""}${it.note ? `<div class="order-item-note">📝 ${escapeHtml(it.note)}</div>` : ""}</li>`).join("");
     const isTerminal = ORDER_TERMINAL_STATUSES.has(order.status);
     const nextStage = ORDER_STAGE_ORDER[ORDER_STAGE_ORDER.indexOf(order.status) + 1];
     const isNew = state.newOrderIds.has(order.id);
@@ -494,12 +494,17 @@ function renderOrders() {
   }).join("");
 }
 
+function formatItemOptions(it) {
+  if (!it.selectedOptions || !it.selectedOptions.length) return "";
+  return it.selectedOptions.map((g) => g.options.map((o) => o.name).join(", ")).join(" · ");
+}
 function printOrderTicket(id) {
   const order = state.orders.find((o) => o.id === id);
   if (!order) return;
   const itemsHtml = order.items.map((it) => `
     <li>
       <div>${it.qty}× ${escapeHtml(it.name)}</div>
+      ${formatItemOptions(it) ? `<div class="ticket-item-options">${escapeHtml(formatItemOptions(it))}</div>` : ""}
       ${it.note ? `<div class="ticket-item-note">Note: ${escapeHtml(it.note)}</div>` : ""}
     </li>
   `).join("");
@@ -723,6 +728,38 @@ async function deleteDish(id) {
 
 addDishBtn.addEventListener("click", () => openDishModal(null));
 
+function optionRowHtml(o) {
+  return `
+    <div class="option-row" data-option-row>
+      <input type="text" data-opt="nameEn" placeholder="Option (English) e.g. Large" value="${escapeAttr(o?.name?.en || "")}">
+      <input type="text" data-opt="nameFr" placeholder="Option (French)" value="${escapeAttr(o?.name?.fr || "")}">
+      <input type="text" data-opt="nameAr" dir="rtl" placeholder="Option (Arabic)" value="${escapeAttr(o?.name?.ar || "")}">
+      <input type="number" step="0.01" data-opt="priceDelta" placeholder="+MAD" value="${o && o.priceDelta ? o.priceDelta : ""}">
+      <button type="button" class="btn btn-ghost btn-small" data-remove-option title="Remove option">×</button>
+    </div>
+  `;
+}
+function optionGroupBlockHtml(g) {
+  const options = (g && g.options && g.options.length ? g.options : [null]).map(optionRowHtml).join("");
+  return `
+    <div class="option-group-block" data-group-block>
+      <div class="option-group-head">
+        <input type="text" data-og="nameEn" placeholder="Group name (English) e.g. Size" value="${escapeAttr(g?.name?.en || "")}">
+        <input type="text" data-og="nameFr" placeholder="Group name (French)" value="${escapeAttr(g?.name?.fr || "")}">
+        <input type="text" data-og="nameAr" dir="rtl" placeholder="Group name (Arabic)" value="${escapeAttr(g?.name?.ar || "")}">
+        <select data-og="type">
+          <option value="single" ${!g || g.type === "single" ? "selected" : ""}>Pick one</option>
+          <option value="multi" ${g && g.type === "multi" ? "selected" : ""}>Pick any</option>
+        </select>
+        <label class="field-check" title="Customer must pick one option in this group"><input type="checkbox" data-og="required" ${g?.required ? "checked" : ""}> Required</label>
+        <button type="button" class="btn btn-danger btn-small" data-remove-group>Remove group</button>
+      </div>
+      <div class="option-list" data-option-list>${options}</div>
+      <button type="button" class="btn btn-ghost btn-small" data-add-option>+ Add option</button>
+    </div>
+  `;
+}
+
 function openDishModal(item) {
   const isEdit = !!item;
   const categoryOptions = state.categories
@@ -761,6 +798,12 @@ function openDishModal(item) {
           <input type="hidden" id="dImagePath" value="${escapeAttr(item?.image || "")}">
         </label>
 
+        <fieldset class="field-group">
+          <legend>Dish options (size, sauces, extras — optional)</legend>
+          <div id="dOptionGroupsContainer">${(item?.optionGroups || []).map(optionGroupBlockHtml).join("")}</div>
+          <button type="button" class="btn btn-ghost btn-small" id="addOptionGroupBtn">+ Add option group</button>
+        </fieldset>
+
         <div class="field-row">
           <label class="field field-check"><input type="checkbox" id="dFeatured" ${item?.featured ? "checked" : ""}> Featured</label>
           <label class="field field-check"><input type="checkbox" id="dRecommended" ${item?.recommended ? "checked" : ""}> Recommended</label>
@@ -792,6 +835,24 @@ function openDishModal(item) {
     }
   });
 
+  const optionGroupsContainer = document.getElementById("dOptionGroupsContainer");
+  document.getElementById("addOptionGroupBtn").addEventListener("click", () => {
+    optionGroupsContainer.insertAdjacentHTML("beforeend", optionGroupBlockHtml(null));
+  });
+  optionGroupsContainer.addEventListener("click", (e) => {
+    if (e.target.closest("[data-remove-group]")) {
+      e.target.closest("[data-group-block]").remove();
+      return;
+    }
+    if (e.target.closest("[data-add-option]")) {
+      e.target.closest("[data-group-block]").querySelector("[data-option-list]").insertAdjacentHTML("beforeend", optionRowHtml(null));
+      return;
+    }
+    if (e.target.closest("[data-remove-option]")) {
+      e.target.closest("[data-option-row]").remove();
+    }
+  });
+
   document.getElementById("dishForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const dishError = document.getElementById("dishError");
@@ -810,7 +871,20 @@ function openDishModal(item) {
       image: document.getElementById("dImagePath").value || null,
       featured: document.getElementById("dFeatured").checked,
       recommended: document.getElementById("dRecommended").checked,
-      available: document.getElementById("dAvailable").checked
+      available: document.getElementById("dAvailable").checked,
+      optionGroups: Array.from(optionGroupsContainer.querySelectorAll("[data-group-block]")).map((block) => ({
+        nameEn: block.querySelector('[data-og="nameEn"]').value.trim(),
+        nameFr: block.querySelector('[data-og="nameFr"]').value.trim(),
+        nameAr: block.querySelector('[data-og="nameAr"]').value.trim(),
+        type: block.querySelector('[data-og="type"]').value,
+        required: block.querySelector('[data-og="required"]').checked,
+        options: Array.from(block.querySelectorAll("[data-option-row]")).map((row) => ({
+          nameEn: row.querySelector('[data-opt="nameEn"]').value.trim(),
+          nameFr: row.querySelector('[data-opt="nameFr"]').value.trim(),
+          nameAr: row.querySelector('[data-opt="nameAr"]').value.trim(),
+          priceDelta: parseFloat(row.querySelector('[data-opt="priceDelta"]').value) || 0
+        }))
+      }))
     };
     try {
       if (isEdit) {

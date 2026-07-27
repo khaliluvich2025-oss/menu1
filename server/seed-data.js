@@ -15,7 +15,26 @@ const menuItems = [
     nameFr:"Classic Smash Burger", nameEn:"Classic Smash Burger", nameAr:"كلاسيك سماش برغر",
     descFr:"Double steak smashé, cheddar, sauce maison, pain brioché toasté.",
     descEn:"Double smashed beef patty, cheddar, house sauce, toasted brioche bun.",
-    descAr:"قطعتان من اللحم المطحون المشوي، جبن شيدر، صلصة خاصة، خبز بريوش محمّص." },
+    descAr:"قطعتان من اللحم المطحون المشوي، جبن شيدر، صلصة خاصة، خبز بريوش محمّص.",
+    // Demonstrates dish customization out of the box: a required single-select
+    // (Size) and an optional multi-select (Extra sauce), each option optionally
+    // adding to the base price.
+    optionGroups: [
+      {
+        id:"size", name:{ fr:"Taille", en:"Size", ar:"الحجم" }, type:"single", required:true,
+        options: [
+          { id:"standard", name:{ fr:"Standard", en:"Standard", ar:"عادي" }, priceDelta:0 },
+          { id:"large", name:{ fr:"Grand", en:"Large", ar:"كبير" }, priceDelta:15 }
+        ]
+      },
+      {
+        id:"extra-sauce", name:{ fr:"Sauce supplémentaire", en:"Extra sauce", ar:"صلصة إضافية" }, type:"multi", required:false,
+        options: [
+          { id:"spicy-sauce", name:{ fr:"Sauce épicée", en:"Spicy sauce", ar:"صلصة حارة" }, priceDelta:5 },
+          { id:"melted-cheese", name:{ fr:"Fromage fondu", en:"Melted cheese", ar:"جبن ذائب" }, priceDelta:8 }
+        ]
+      }
+    ] },
   { id:"ember-cheese-burger", categoryId:"burgers", sortOrder:2, price:48, discountPrice:null, image:"images/burgers/ember-cheese-burger.jpg", featured:0, recommended:1, available:1,
     nameFr:"Ember Cheese Burger", nameEn:"Ember Cheese Burger", nameAr:"إمبر تشيز برغر",
     descFr:"Cheddar fondu, oignons caramélisés, sauce ember fumée, laitue croquante.",

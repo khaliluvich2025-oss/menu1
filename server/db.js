@@ -64,7 +64,8 @@ async function seedMenuIfEmpty(db) {
     recommended: !!i.recommended,
     available: !!i.available,
     name: { fr: i.nameFr, en: i.nameEn, ar: i.nameAr },
-    description: { fr: i.descFr, en: i.descEn, ar: i.descAr }
+    description: { fr: i.descFr, en: i.descEn, ar: i.descAr },
+    optionGroups: i.optionGroups || []
   }));
   await db.collection("menu_items").insertMany(items);
 

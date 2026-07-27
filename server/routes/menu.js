@@ -19,8 +19,56 @@ function mapItem(doc) {
     recommended: !!doc.recommended,
     available: !!doc.available,
     name: doc.name,
-    description: doc.description
+    description: doc.description,
+    optionGroups: doc.optionGroups || []
   };
+}
+
+// Dish customization (size, sauces, extras): each group is single-select
+// (e.g. Size, usually required) or multi-select (e.g. Extras, always
+// optional), each option optionally adding to the base price. Sanitized
+// server-side on every save — empty groups/options are dropped rather than
+// stored, and ids are slugified + deduped within the item, not trusted
+// from the client.
+function uniqueSlugIn(base, existingIds) {
+  let id = slugify(base) || "option";
+  let n = 2;
+  while (existingIds.has(id)) { id = `${slugify(base) || "option"}-${n}`; n += 1; }
+  existingIds.add(id);
+  return id;
+}
+function sanitizeOptionGroups(raw) {
+  if (!Array.isArray(raw)) return [];
+  const groupIds = new Set();
+  return raw.map((g) => {
+    const name = {
+      fr: String((g && g.nameFr) || "").trim(),
+      en: String((g && g.nameEn) || "").trim(),
+      ar: String((g && g.nameAr) || "").trim()
+    };
+    const optionIds = new Set();
+    const options = Array.isArray(g && g.options) ? g.options.map((o) => {
+      const oName = {
+        fr: String((o && o.nameFr) || "").trim(),
+        en: String((o && o.nameEn) || "").trim(),
+        ar: String((o && o.nameAr) || "").trim()
+      };
+      if (!oName.fr && !oName.en && !oName.ar) return null;
+      return {
+        id: uniqueSlugIn(oName.en || oName.fr || oName.ar, optionIds),
+        name: oName,
+        priceDelta: Number(o.priceDelta) || 0
+      };
+    }).filter(Boolean) : [];
+    if ((!name.fr && !name.en && !name.ar) || options.length === 0) return null;
+    return {
+      id: uniqueSlugIn(name.en || name.fr || name.ar, groupIds),
+      name,
+      type: g.type === "multi" ? "multi" : "single",
+      required: g.type !== "multi" && !!g.required, // "required" is only meaningful for single-select groups
+      options
+    };
+  }).filter(Boolean);
 }
 
 function slugify(text) {
@@ -143,7 +191,8 @@ router.post("/admin/menu-items", requireOwner, async (req, res) => {
     recommended: !!b.recommended,
     available: b.available !== false,
     name: { fr: b.nameFr, en: b.nameEn, ar: b.nameAr },
-    description: { fr: b.descFr || "", en: b.descEn || "", ar: b.descAr || "" }
+    description: { fr: b.descFr || "", en: b.descEn || "", ar: b.descAr || "" },
+    optionGroups: sanitizeOptionGroups(b.optionGroups)
   };
   await db.collection("menu_items").insertOne(doc);
   res.status(201).json(mapItem(doc));
@@ -170,7 +219,8 @@ router.put("/admin/menu-items/:id", requireOwner, async (req, res) => {
       recommended: !!b.recommended,
       available: b.available !== false,
       name: { fr: b.nameFr, en: b.nameEn, ar: b.nameAr },
-      description: { fr: b.descFr || "", en: b.descEn || "", ar: b.descAr || "" }
+      description: { fr: b.descFr || "", en: b.descEn || "", ar: b.descAr || "" },
+      optionGroups: sanitizeOptionGroups(b.optionGroups)
     }
   });
   const updated = await db.collection("menu_items").findOne({ _id: req.params.id });

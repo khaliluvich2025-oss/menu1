@@ -348,6 +348,23 @@
   .confirm-actions{ display:flex; gap:10px; margin-top:16px; }
   .confirm-actions .btn{ flex:1; }
 
+  /* ---------- DISH CUSTOMIZATION POPUP ---------- */
+  .dish-options-card{ max-width:420px; max-height:85vh; overflow-y:auto; position:relative; }
+  .dish-options-close{ position:absolute; top:12px; inset-inline-end:12px; z-index:1; background:var(--surface); box-shadow:var(--shadow-1); }
+  .dish-options-media{ margin:-22px -22px 14px; }
+  .dish-options-media .dish-media{ width:100%; aspect-ratio:16/10; border-radius:0; }
+  .dish-options-card h2{ font-size:1.15rem; }
+  .dish-options-desc{ color:var(--text-muted); font-size:.86rem; margin:4px 0 14px; }
+  .dish-options-group{ border:none; padding:0; margin:0 0 18px; }
+  .dish-options-group legend{ font-weight:800; font-size:.9rem; margin-bottom:6px; padding:0; }
+  .dish-options-required{ color:var(--primary); }
+  .dish-option-row{ display:flex; align-items:center; gap:10px; padding:8px 0; cursor:pointer; font-size:.9rem; border-bottom:1px solid var(--border); }
+  .dish-option-row:last-child{ border-bottom:none; }
+  .dish-option-row input{ width:18px; height:18px; accent-color:var(--primary); flex-shrink:0; }
+  .dish-options-footer{ display:flex; align-items:center; gap:12px; margin-top:8px; }
+  .dish-options-footer .qty-stepper{ flex-shrink:0; }
+  .dish-options-footer .btn{ flex:1; }
+
   /* ---------- ORDER RESUME BANNER ---------- */
   .order-resume-banner{
     display:flex; align-items:center; gap:12px;
@@ -730,6 +747,7 @@
   .cart-item-info{ flex:1; min-width:0; }
   .cart-item-name{ font-size:.88rem; font-weight:700; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cart-item-unit{ font-size:.76rem; color:var(--text-muted); }
+  .cart-item-options{ font-size:.76rem; color:var(--primary); font-weight:600; margin-bottom:2px; }
   .cart-item-note{ margin-top:8px; margin-inline-start:68px; }
   .cart-item-note-input{
     width:100%; border:1px solid var(--border); border-radius:var(--radius-sm);
@@ -1086,6 +1104,25 @@
     <div class="confirm-actions">
       <button type="button" class="btn btn-secondary" id="callServerCancelBtn" data-i18n="callServerCancel">Annuler</button>
       <button type="button" class="btn btn-primary" id="callServerConfirmBtn" data-i18n="callServerConfirmButton">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<div class="cart-overlay" id="dishOptionsOverlay"></div>
+<div class="confirm-dialog dish-options-dialog" id="dishOptionsDialog" role="dialog" aria-modal="true" aria-labelledby="dishOptionsTitle" aria-hidden="true">
+  <div class="confirm-card dish-options-card">
+    <button type="button" class="cart-close dish-options-close" id="dishOptionsCloseBtn" aria-label="Fermer">×</button>
+    <div class="dish-options-media" id="dishOptionsMedia"></div>
+    <h2 id="dishOptionsTitle"></h2>
+    <p class="dish-options-desc" id="dishOptionsDesc"></p>
+    <div id="dishOptionsGroups"></div>
+    <div class="dish-options-footer">
+      <div class="qty-stepper">
+        <button type="button" class="qty-btn" id="dishOptionsQtyDec">−</button>
+        <span class="qty-value" id="dishOptionsQtyValue">1</span>
+        <button type="button" class="qty-btn" id="dishOptionsQtyInc">+</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="dishOptionsAddBtn"></button>
     </div>
   </div>
 </div>
@@ -1454,6 +1491,17 @@ const callServerTableError = document.getElementById("callServerTableError");
 const callServerDialogHint = document.getElementById("callServerDialogHint");
 const callServerCancelBtn = document.getElementById("callServerCancelBtn");
 const callServerConfirmBtn = document.getElementById("callServerConfirmBtn");
+const dishOptionsOverlay = document.getElementById("dishOptionsOverlay");
+const dishOptionsDialog = document.getElementById("dishOptionsDialog");
+const dishOptionsCloseBtn = document.getElementById("dishOptionsCloseBtn");
+const dishOptionsMedia = document.getElementById("dishOptionsMedia");
+const dishOptionsTitle = document.getElementById("dishOptionsTitle");
+const dishOptionsDesc = document.getElementById("dishOptionsDesc");
+const dishOptionsGroups = document.getElementById("dishOptionsGroups");
+const dishOptionsQtyValue = document.getElementById("dishOptionsQtyValue");
+const dishOptionsQtyDec = document.getElementById("dishOptionsQtyDec");
+const dishOptionsQtyInc = document.getElementById("dishOptionsQtyInc");
+const dishOptionsAddBtn = document.getElementById("dishOptionsAddBtn");
 const loadingSplash = document.getElementById("loadingSplash");
 let splashRevealedAt = null;
 function revealSplashLogo(){
@@ -1714,11 +1762,37 @@ heroCta.addEventListener("click", ()=>{ scrollToElement(menuSection); });
    ========================================================================= */
 function persistCart(){ saveToStorage(STORAGE_KEYS.cart, state.cart); }
 
-function addToCart(id, originEl){
+// Dish customization (size/sauces/extras): each cart line gets its own
+// lineId rather than being keyed by dish id alone, since the same dish
+// ordered with different options (e.g. Small vs Large) must stay separate
+// lines, while identical configurations should still merge quantities.
+function generateLineId(){
+  return `line_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+}
+function serializeOptions(selectedOptions){
+  return JSON.stringify((selectedOptions||[]).map(g=>({ groupId:g.groupId, optionIds:[...(g.optionIds||[])].sort() })).sort((a,b)=> a.groupId < b.groupId ? -1 : a.groupId > b.groupId ? 1 : 0));
+}
+function resolveSelectedOptions(item, selectedOptions){
+  if(!selectedOptions || !selectedOptions.length || !item.optionGroups) return [];
+  return selectedOptions.map(sel=>{
+    const group = item.optionGroups.find(g=>g.id === sel.groupId);
+    if(!group) return null;
+    const options = group.options.filter(o=>(sel.optionIds||[]).includes(o.id));
+    if(!options.length) return null;
+    return { groupId: group.id, groupName: group.name, options };
+  }).filter(Boolean);
+}
+function optionsPriceDelta(resolvedOptions){
+  return resolvedOptions.reduce((s,g)=>s + g.options.reduce((s2,o)=>s2 + (o.priceDelta||0), 0), 0);
+}
+function addToCart(id, originEl, selectedOptions, qty){
   const item = menuItems.find(m=>m.id === id);
   if(!item || item.available === false) return;
-  const existing = state.cart.find(c=>c.id === id);
-  if(existing) existing.qty += 1; else state.cart.push({ id, qty:1, note:"" });
+  qty = qty && qty > 0 ? qty : 1;
+  const optionsKey = serializeOptions(selectedOptions);
+  const existing = state.cart.find(c=>c.id === id && serializeOptions(c.selectedOptions) === optionsKey);
+  if(existing) existing.qty += qty;
+  else state.cart.push({ lineId: generateLineId(), id, qty, note:"", selectedOptions: selectedOptions || [] });
   persistCart();
   updateCartUI();
   if(!flyToCart(originEl)) bumpCartCount();
@@ -1747,11 +1821,11 @@ function flyToCart(originEl){
   window.setTimeout(land, 750); // backstop in case the tab is backgrounded and the animation never fires
   return true;
 }
-function changeQty(id, delta){
-  const line = state.cart.find(c=>c.id === id);
+function changeQty(lineId, delta){
+  const line = state.cart.find(c=>c.lineId === lineId);
   if(!line) return;
   line.qty += delta;
-  if(line.qty <= 0){ state.cart = state.cart.filter(c=>c.id !== id); }
+  if(line.qty <= 0){ state.cart = state.cart.filter(c=>c.lineId !== lineId); }
   persistCart();
   updateCartUI();
 }
@@ -1759,12 +1833,13 @@ function cartLines(){
   return state.cart.map(c=>{
     const item = menuItems.find(m=>m.id === c.id);
     if(!item) return null;
-    const unit = item.discountPrice != null ? item.discountPrice : item.price;
-    return { item, qty: c.qty, unit, lineTotal: unit * c.qty, note: c.note || "" };
+    const resolvedOptions = resolveSelectedOptions(item, c.selectedOptions);
+    const unit = (item.discountPrice != null ? item.discountPrice : item.price) + optionsPriceDelta(resolvedOptions);
+    return { lineId: c.lineId, item, qty: c.qty, unit, lineTotal: unit * c.qty, note: c.note || "", resolvedOptions };
   }).filter(Boolean);
 }
-function updateCartItemNote(id, note){
-  const line = state.cart.find(c=>c.id === id);
+function updateCartItemNote(lineId, note){
+  const line = state.cart.find(c=>c.lineId === lineId);
   if(!line) return;
   line.note = note;
   persistCart();
@@ -1801,12 +1876,15 @@ function renderCartBody(lines){
   }
   stopOrderTrackerPolling();
   cartFooterForm.hidden = false;
-  cartBody.innerHTML = lines.map(l=>`
-    <div class="cart-line" data-cart-id="${l.item.id}">
+  cartBody.innerHTML = lines.map(l=>{
+    const optionsText = l.resolvedOptions.map(g=>g.options.map(o=>o.name[state.lang]||o.name.en).join(", ")).join(" · ");
+    return `
+    <div class="cart-line" data-cart-id="${l.lineId}">
       <div class="cart-item">
         ${dishMediaMarkup(l.item)}
         <div class="cart-item-info">
           <p class="cart-item-name">${escapeHtml(getName(l.item))}</p>
+          ${optionsText ? `<p class="cart-item-options">${escapeHtml(optionsText)}</p>` : ""}
           <p class="cart-item-unit">${formatPrice(l.unit)}</p>
         </div>
         <div class="qty-stepper">
@@ -1817,10 +1895,11 @@ function renderCartBody(lines){
         <p class="cart-item-total">${formatPrice(l.lineTotal)}</p>
       </div>
       <div class="cart-item-note">
-        <input type="text" class="cart-item-note-input" data-note-id="${l.item.id}" placeholder="${t("cartItemNotePlaceholder")}" value="${escapeHtml(l.note)}" maxlength="200">
+        <input type="text" class="cart-item-note-input" data-note-id="${l.lineId}" placeholder="${t("cartItemNotePlaceholder")}" value="${escapeHtml(l.note)}" maxlength="200">
       </div>
     </div>
-  `).join("");
+  `;
+  }).join("");
   wireImageFallbacks(cartBody);
 }
 function updateCartUI(){
@@ -1949,10 +2028,101 @@ utilityNavPill.addEventListener("click", (e)=>{
   if(btn) setActiveNav(btn);
 });
 
+/* =========================================================================
+   DISH CUSTOMIZATION POPUP — shown only for dishes with optionGroups
+   (size/sauces/extras); dishes without any keep the direct-add fast path.
+   ========================================================================= */
+let dishOptionsItem = null;
+let dishOptionsQty = 1;
+let lastFocusedBeforeDishOptions = null;
+
+function dishOptionsGroupHtml(group){
+  const inputType = group.type === "multi" ? "checkbox" : "radio";
+  const optionsHtml = group.options.map((o, idx)=>{
+    const checked = group.type === "single" && group.required && idx === 0 ? "checked" : "";
+    const priceLabel = o.priceDelta ? ` (+${formatPrice(o.priceDelta)})` : "";
+    return `
+      <label class="dish-option-row">
+        <input type="${inputType}" name="dopt-group-${escapeHtml(group.id)}" data-group-id="${escapeHtml(group.id)}" value="${escapeHtml(o.id)}" ${checked}>
+        <span>${escapeHtml(o.name[state.lang] || o.name.en)}${priceLabel}</span>
+      </label>
+    `;
+  }).join("");
+  return `
+    <fieldset class="dish-options-group">
+      <legend>${escapeHtml(group.name[state.lang] || group.name.en)}${group.required ? ` <span class="dish-options-required">*</span>` : ""}</legend>
+      ${optionsHtml}
+    </fieldset>
+  `;
+}
+function computeDishOptionsSelection(){
+  return dishOptionsItem.optionGroups.map((group)=>{
+    const checked = Array.from(dishOptionsGroups.querySelectorAll(`input[data-group-id="${group.id}"]:checked`));
+    return { groupId: group.id, optionIds: checked.map(c=>c.value) };
+  }).filter(g=>g.optionIds.length > 0);
+}
+function updateDishOptionsTotal(){
+  const resolved = resolveSelectedOptions(dishOptionsItem, computeDishOptionsSelection());
+  const unit = (dishOptionsItem.discountPrice != null ? dishOptionsItem.discountPrice : dishOptionsItem.price) + optionsPriceDelta(resolved);
+  dishOptionsAddBtn.textContent = `${t("addToCart")} — ${formatPrice(unit * dishOptionsQty)}`;
+}
+function onDishOptionsKeydown(e){ if(e.key === "Escape") closeDishOptionsModal(); }
+function openDishOptionsModal(item){
+  dishOptionsItem = item;
+  dishOptionsQty = 1;
+  lastFocusedBeforeDishOptions = document.activeElement;
+  dishOptionsMedia.innerHTML = dishMediaMarkup(item);
+  wireImageFallbacks(dishOptionsMedia);
+  dishOptionsTitle.textContent = getName(item);
+  const desc = getDesc(item);
+  dishOptionsDesc.textContent = desc;
+  dishOptionsDesc.hidden = !desc;
+  dishOptionsGroups.innerHTML = item.optionGroups.map(dishOptionsGroupHtml).join("");
+  dishOptionsQtyValue.textContent = "1";
+  updateDishOptionsTotal();
+  dishOptionsOverlay.classList.add("open");
+  dishOptionsDialog.classList.add("open");
+  dishOptionsDialog.setAttribute("aria-hidden", "false");
+  lockBodyScroll();
+  document.addEventListener("keydown", onDishOptionsKeydown);
+  window.setTimeout(()=>{ dishOptionsCloseBtn.focus(); }, prefersReducedMotion ? 0 : 80);
+}
+function closeDishOptionsModal(){
+  dishOptionsOverlay.classList.remove("open");
+  dishOptionsDialog.classList.remove("open");
+  dishOptionsDialog.setAttribute("aria-hidden", "true");
+  unlockBodyScroll();
+  document.removeEventListener("keydown", onDishOptionsKeydown);
+  if(lastFocusedBeforeDishOptions && typeof lastFocusedBeforeDishOptions.focus === "function") lastFocusedBeforeDishOptions.focus();
+}
+dishOptionsGroups.addEventListener("change", updateDishOptionsTotal);
+dishOptionsQtyDec.addEventListener("click", ()=>{
+  if(dishOptionsQty <= 1) return;
+  dishOptionsQty -= 1;
+  dishOptionsQtyValue.textContent = String(dishOptionsQty);
+  updateDishOptionsTotal();
+});
+dishOptionsQtyInc.addEventListener("click", ()=>{
+  dishOptionsQty += 1;
+  dishOptionsQtyValue.textContent = String(dishOptionsQty);
+  updateDishOptionsTotal();
+});
+dishOptionsAddBtn.addEventListener("click", ()=>{
+  addToCart(dishOptionsItem.id, null, computeDishOptionsSelection(), dishOptionsQty);
+  closeDishOptionsModal();
+});
+dishOptionsCloseBtn.addEventListener("click", closeDishOptionsModal);
+dishOptionsOverlay.addEventListener("click", closeDishOptionsModal);
+
 menuSection.addEventListener("click", (e)=>{
   const addBtn = e.target.closest(".btn-add");
   if(!addBtn || addBtn.disabled) return;
-  addToCart(addBtn.dataset.addId, addBtn);
+  const item = menuItems.find(m=>m.id === addBtn.dataset.addId);
+  if(item && item.optionGroups && item.optionGroups.length){
+    openDishOptionsModal(item);
+  }else{
+    addToCart(addBtn.dataset.addId, addBtn);
+  }
 });
 
 /* =========================================================================
@@ -2170,7 +2340,7 @@ async function handleCheckout(){
       body: JSON.stringify({
         table: tableVal,
         lang: state.lang,
-        items: state.cart.map(c=>({ id:c.id, qty:c.qty, note:c.note || "" }))
+        items: state.cart.map(c=>({ id:c.id, qty:c.qty, note:c.note || "", selectedOptions: c.selectedOptions || [] }))
       })
     });
     const data = await res.json().catch(()=>null);
@@ -2496,7 +2666,11 @@ async function loadAndRenderMenu(){
   try{
     await Promise.all([fetchMenuData(), fetchRestaurantInfo()]);
     const savedCart = loadFromStorage(STORAGE_KEYS.cart, []);
-    state.cart = Array.isArray(savedCart) ? savedCart.filter(c=>menuItems.some(m=>m.id === c.id)) : [];
+    state.cart = Array.isArray(savedCart) ? savedCart.filter(c=>menuItems.some(m=>m.id === c.id)).map(c=>({
+      // Backfills lineId/selectedOptions for carts saved before dish customization existed.
+      lineId: c.lineId || generateLineId(),
+      id: c.id, qty: c.qty, note: c.note || "", selectedOptions: c.selectedOptions || []
+    })) : [];
 
     menuLoadingEl.hidden = true;
     applyTranslations();
