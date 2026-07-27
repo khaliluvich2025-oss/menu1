@@ -462,6 +462,7 @@ function renderOrders() {
         ${miniTrackerHtml(order)}
         <div class="order-card-foot">
           <span class="order-total">${order.total.toFixed(2)} MAD</span>
+          <button type="button" class="btn btn-ghost btn-small" data-print-id="${order.id}">🖨️ Print ticket</button>
         </div>
         ${actionsHtml}
       </div>
@@ -469,7 +470,40 @@ function renderOrders() {
   }).join("");
 }
 
+function printOrderTicket(id) {
+  const order = state.orders.find((o) => o.id === id);
+  if (!order) return;
+  const itemsHtml = order.items.map((it) => `
+    <li>
+      <div>${it.qty}× ${escapeHtml(it.name)}</div>
+      ${it.note ? `<div class="ticket-item-note">Note: ${escapeHtml(it.note)}</div>` : ""}
+    </li>
+  `).join("");
+  document.getElementById("printTicket").innerHTML = `
+    <div class="ticket-header">
+      <h2>Ember Table</h2>
+      <div class="ticket-ref">${escapeHtml(order.ref)}</div>
+    </div>
+    <div class="ticket-meta">
+      <div><span>Table</span><span>${escapeHtml(order.table)}</span></div>
+      <div><span>Time</span><span>${new Date(order.createdAt).toLocaleString()}</span></div>
+    </div>
+    <div class="ticket-divider"></div>
+    <ul class="ticket-items">${itemsHtml}</ul>
+    <div class="ticket-divider"></div>
+    <div class="ticket-total"><span>Total</span><span>${order.total.toFixed(2)} MAD</span></div>
+    <div class="ticket-footer">Printed ${new Date().toLocaleString()}</div>
+  `;
+  window.print();
+}
+
 ordersContainer.addEventListener("click", async (e) => {
+  const printBtn = e.target.closest("[data-print-id]");
+  if (printBtn) {
+    printOrderTicket(printBtn.dataset.printId);
+    return;
+  }
+
   const btn = e.target.closest("[data-order-action]");
   if (btn) {
     const id = btn.dataset.id;
