@@ -124,6 +124,7 @@ router.post("/orders", async (req, res) => {
 
   const orderItems = [];
   for (const line of items) {
+    if (!line || typeof line.id !== "string") continue; // reject non-string ids outright — an object like {"$ne": null} would otherwise be handed straight to MongoDB as a query operator, matching an arbitrary item instead of none
     const qty = Math.max(1, parseInt(line.qty, 10) || 0);
     const dbItem = await db.collection("menu_items").findOne({ _id: line.id });
     if (!dbItem || !dbItem.available) continue; // skip items that vanished/sold out since being added to cart

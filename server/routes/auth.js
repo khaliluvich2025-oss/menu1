@@ -18,7 +18,11 @@ function getAttemptState(username) {
 
 router.post("/login", async (req, res) => {
   const { username, password } = req.body || {};
-  if (!username || !password) {
+  // Must be strings, not just truthy — an object like {"$ne": null} passed
+  // as username would otherwise reach findOne() below as a raw MongoDB query
+  // operator instead of a value, matching any/every user and bypassing the
+  // credential check entirely (classic NoSQL injection).
+  if (typeof username !== "string" || typeof password !== "string" || !username || !password) {
     return res.status(400).json({ error: "missing_credentials" });
   }
 
