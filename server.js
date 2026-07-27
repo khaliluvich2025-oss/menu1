@@ -95,6 +95,26 @@ app.use("/api", ordersRoutes);
 app.use("/api", statsRoutes);
 app.use("/api", assistanceRoutes);
 
+// TEMPORARY — diagnosing the production 500s on /api/menu. Returns the real
+// MongoDB error (credentials stripped) instead of the generic catch-all, so
+// the actual failure mode is visible without Vercel dashboard/log access.
+// Remove once the root cause is confirmed and fixed.
+app.get("/api/_diag", async (req, res) => {
+  try {
+    const db = await require("./server/mongo").getDb();
+    await db.command({ ping: 1 });
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({
+      ok: false,
+      name: err.name,
+      code: err.code,
+      codeName: err.codeName,
+      message: String(err.message || "").replace(/mongodb(\+srv)?:\/\/[^\s]+/gi, "[redacted-uri]")
+    });
+  }
+});
+
 app.use("/api", (req, res) => res.status(404).json({ error: "not_found" }));
 
 // Local dev: Express serves these directly. On Vercel, express.static() is
