@@ -102,7 +102,6 @@
     line-height:1.45;
     -webkit-font-smoothing:antialiased;
     overflow-x:hidden;
-    padding-bottom: var(--dock-h);
     transition: background-color var(--transition-base), color var(--transition-base);
   }
   body.scroll-locked{ overflow:hidden; width:100%; }
@@ -142,8 +141,9 @@
     margin-inline:auto;
     background:var(--bg);
     min-height:100%;
+    padding-bottom: var(--dock-h);
     box-shadow: 0 0 60px rgba(0,0,0,.15);
-    transition: background-color var(--transition-base);
+    transition: background-color var(--transition-base), padding-bottom var(--transition-base);
   }
 
   /* ---------- BUTTONS ---------- */
@@ -238,44 +238,39 @@
   .status-dot{ width:7px; height:7px; border-radius:50%; background:#3FBE5F; box-shadow:0 0 0 3px color-mix(in srgb, #3FBE5F 25%, transparent); flex-shrink:0; }
 
   /* ---------- UTILITY NAV (Menu / Preferences / Cart / Orders / Call Server) ----------
-     One nav, two presentations: a fixed bottom dock on mobile, a compact inline
-     row in the header on desktop (see the min-width:860px override below). */
-  .utility-nav{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
+     One nav, two presentations: a fixed bottom dock on mobile — with a single
+     shared indicator circle that glides to whichever item was last tapped,
+     raising its icon and returning the previous one to normal — and a plain
+     compact inline row in the header on desktop, since that header scrolls
+     away with the page there and doesn't need the same motion treatment. */
+  .utility-nav{ display:flex; align-items:center; gap:4px; flex-shrink:0; position:relative; }
   .utility-nav-btn{
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
     border:none; background:transparent; color:var(--text-muted); cursor:pointer;
-    padding:6px 8px; border-radius:var(--radius-sm); flex:1;
+    padding:6px 8px; border-radius:var(--radius-sm); flex:1; position:relative;
     -webkit-tap-highlight-color:transparent;
     transition: color var(--transition-fast), background-color var(--transition-fast);
   }
   .utility-nav-btn:hover{ color:var(--text); background:var(--surface-alt); }
-  .utility-nav-icon{ width:20px; height:20px; display:flex; align-items:center; justify-content:center; }
-  .utility-nav-icon svg{ width:100%; height:100%; }
-  .utility-nav-label{ font-size:.62rem; font-weight:700; white-space:nowrap; }
-
-  .utility-nav-icon-wrap{
-    position:relative; width:42px; height:42px; border-radius:50%;
-    background:var(--primary); color:var(--text-on-ember);
+  .utility-nav-icon, .utility-nav-icon-wrap{
+    position:relative; z-index:1; width:20px; height:20px;
     display:flex; align-items:center; justify-content:center;
-    box-shadow:var(--shadow-1); margin-bottom:1px;
-    transition: transform var(--transition-fast);
   }
-  .utility-nav-btn:active .utility-nav-icon-wrap{ transform:scale(.92); }
-  .utility-nav-btn-cart .utility-nav-icon-wrap .utility-nav-icon{ width:21px; height:21px; }
-  .utility-nav-btn-cart .utility-nav-label{ color:var(--text); }
+  .utility-nav-icon svg{ width:100%; height:100%; }
+  .utility-nav-label{ font-size:.62rem; font-weight:700; white-space:nowrap; transition: color var(--transition-fast); }
 
   .cart-count{
-    position:absolute; top:-4px; inset-inline-end:-4px;
+    position:absolute; top:-6px; inset-inline-end:-8px;
     min-width:20px; height:20px; padding:0 4px; border-radius:999px;
     background:var(--surface); color:var(--primary);
     font-size:.68rem; font-weight:800; line-height:20px; text-align:center;
-    box-shadow: 0 0 0 2px var(--primary);
+    box-shadow: 0 0 0 2px var(--primary); z-index:2;
   }
   .cart-count.is-zero{ opacity:0; transform:scale(.6); }
   .cart-count.bump{ animation: cartBump calc(360ms * var(--motion-scale)) ease; }
   @keyframes cartBump{ 0%{transform:scale(1);} 35%{transform:scale(1.35);} 100%{transform:scale(1);} }
 
-  /* Mobile: fixed bottom dock */
+  /* Mobile: fixed bottom dock with a sliding active-indicator circle */
   @media (max-width:859px){
     :root{ --dock-h: calc(84px + var(--safe-bottom)); }
     .utility-nav{
@@ -284,13 +279,26 @@
       padding:6px 4px calc(6px + var(--safe-bottom));
       box-shadow: 0 -6px 20px rgba(0,0,0,.14);
     }
+    .utility-nav-indicator{
+      position:absolute; top:0; left:0; z-index:0; width:42px; height:42px; border-radius:50%;
+      background:var(--primary); box-shadow:var(--shadow-1); pointer-events:none;
+      transition: transform calc(300ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1);
+    }
+    .utility-nav-btn.is-active .utility-nav-icon,
+    .utility-nav-btn.is-active .utility-nav-icon-wrap{
+      color:var(--text-on-ember);
+      transform: translateY(-3px);
+      transition: color calc(280ms * var(--motion-scale)) ease, transform calc(300ms * var(--motion-scale)) cubic-bezier(.34,1.56,.64,1);
+    }
+    .utility-nav-btn.is-active .utility-nav-label{ color:var(--text); }
   }
-  /* Desktop: compact inline row in the header */
+  /* Desktop: no sliding indicator (header scrolls away with the page) — a
+     simple hover/active color change is enough. */
   @media (min-width:860px){
     .utility-nav-btn{ flex-direction:row; gap:8px; padding:8px 14px; flex:none; }
     .utility-nav-label{ font-size:.84rem; }
-    .utility-nav-icon-wrap{ width:32px; height:32px; margin-bottom:0; }
-    .utility-nav-btn-cart .utility-nav-icon-wrap .utility-nav-icon{ width:17px; height:17px; }
+    .utility-nav-indicator{ display:none; }
+    .utility-nav-btn.is-active{ color:var(--text); background:var(--surface-alt); }
   }
 
   /* ---------- CALL SERVER CONFIRM DIALOG ---------- */
@@ -766,6 +774,11 @@
     .hero-inner{ grid-template-columns: 1.05fr .95fr; gap:36px; }
     .hero-cta{ width:auto; }
     .hero-image-frame{ aspect-ratio:4/3; }
+    /* Header (and its utility nav) scrolls away with the page instead of
+       staying pinned — only the menu's search/filter/category bar stays
+       stuck once you've scrolled past the header. */
+    .site-header{ position:static; }
+    .menu-controls{ top:0; }
   }
   @media (min-width: 1000px){
     .dish-grid{ grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); }
@@ -813,6 +826,7 @@
       </div>
     </div>
     <nav class="utility-nav" id="utilityNav" aria-label="Navigation principale">
+      <span class="utility-nav-indicator" id="utilityNavIndicator" aria-hidden="true"></span>
       <button type="button" class="utility-nav-btn" id="navMenuBtn">
         <span class="utility-nav-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -1026,14 +1040,6 @@
         </button>
       </div>
     </section>
-    <section class="prefs-section">
-      <h3 class="prefs-section-title" data-i18n="prefsAssistanceSection">Besoin d'aide ?</h3>
-      <label class="field"><span data-i18n="tableLabel">Numéro de table</span>
-        <input type="text" inputmode="numeric" id="callTableInput" placeholder="ex. 12">
-      </label>
-      <button type="button" class="btn btn-primary btn-block" id="callWaiterBtn" data-i18n="callWaiterButton">Appeler un serveur</button>
-      <p class="assistance-hint" id="callWaiterHint" aria-live="polite"></p>
-    </section>
   </div>
 </aside>
 
@@ -1111,8 +1117,6 @@ const translations = {
     prefsButtonLabel:"Préférences", prefsTitle:"Préférences", prefsClose:"Fermer les préférences",
     prefsLanguageSection:"Langue", prefsAppearanceSection:"Apparence",
     themeLight:"Clair", themeDark:"Sombre", themeSystem:"Système",
-    prefsAssistanceSection:"Besoin d'aide ?",
-    callWaiterButton:"Appeler un serveur",
     callWaiterSent:"Un serveur a été prévenu, il arrive.",
     callWaiterError:"Impossible d'appeler. Merci de réessayer.",
     callWaiterCooldown:"Merci de patienter {seconds}s avant un nouvel appel.",
@@ -1181,8 +1185,6 @@ const translations = {
     prefsButtonLabel:"Preferences", prefsTitle:"Preferences", prefsClose:"Close preferences",
     prefsLanguageSection:"Language", prefsAppearanceSection:"Appearance",
     themeLight:"Light", themeDark:"Dark", themeSystem:"System",
-    prefsAssistanceSection:"Need help?",
-    callWaiterButton:"Call a waiter",
     callWaiterSent:"A staff member has been notified and is on the way.",
     callWaiterError:"Couldn't send your request. Please try again.",
     callWaiterCooldown:"Please wait {seconds}s before calling again.",
@@ -1251,8 +1253,6 @@ const translations = {
     prefsButtonLabel:"التفضيلات", prefsTitle:"التفضيلات", prefsClose:"إغلاق التفضيلات",
     prefsLanguageSection:"اللغة", prefsAppearanceSection:"المظهر",
     themeLight:"فاتح", themeDark:"داكن", themeSystem:"النظام",
-    prefsAssistanceSection:"بحاجة إلى مساعدة؟",
-    callWaiterButton:"استدعاء نادل",
     callWaiterSent:"تم إبلاغ أحد أفراد الطاقم، إنه في طريقه إليك.",
     callWaiterError:"تعذّر إرسال الطلب. يرجى المحاولة مرة أخرى.",
     callWaiterCooldown:"يرجى الانتظار {seconds} ثانية قبل الاتصال مرة أخرى.",
@@ -1409,9 +1409,8 @@ const prefsToggle = document.getElementById("prefsToggle");
 const prefsOverlay = document.getElementById("prefsOverlay");
 const prefsPanel = document.getElementById("prefsPanel");
 const prefsCloseBtn = document.getElementById("prefsCloseBtn");
-const callTableInput = document.getElementById("callTableInput");
-const callWaiterBtn = document.getElementById("callWaiterBtn");
-const callWaiterHint = document.getElementById("callWaiterHint");
+const utilityNav = document.getElementById("utilityNav");
+const utilityNavIndicator = document.getElementById("utilityNavIndicator");
 const navMenuBtn = document.getElementById("navMenuBtn");
 const navOrdersBtn = document.getElementById("navOrdersBtn");
 const navCallServerBtn = document.getElementById("navCallServerBtn");
@@ -1551,7 +1550,10 @@ function matchesFilter(item, filter){
 
 let categoryObserver = null;
 function getStickyOffset(){
-  return (siteHeader ? siteHeader.offsetHeight : 0) + (menuControls ? menuControls.offsetHeight : 0);
+  // The header only stays pinned on mobile — on desktop it scrolls away with
+  // the page and only menu-controls (search/filter/category bar) remains stuck.
+  const headerIsSticky = siteHeader && getComputedStyle(siteHeader).position === "sticky";
+  return (headerIsSticky ? siteHeader.offsetHeight : 0) + (menuControls ? menuControls.offsetHeight : 0);
 }
 function setupScrollSpy(){
   if(categoryObserver){ categoryObserver.disconnect(); categoryObserver = null; }
@@ -1867,6 +1869,36 @@ function openOrdersTracker(){
 }
 navOrdersBtn.addEventListener("click", openOrdersTracker);
 
+// Mobile dock's sliding active-indicator: a single circle that glides behind
+// whichever nav item was last tapped (Cart by default), raising that icon and
+// letting the previous one settle back down. No-op-looking but harmless on
+// desktop, where the indicator is hidden via CSS. Positions are measured
+// live via getBoundingClientRect() rather than computed from a fixed
+// left-to-right formula, so this automatically tracks correctly under RTL.
+let activeNavBtn = null;
+function moveIndicatorTo(btn){
+  if(!utilityNavIndicator || !btn) return;
+  const iconEl = btn.querySelector(".utility-nav-icon, .utility-nav-icon-wrap");
+  if(!iconEl) return;
+  const navRect = utilityNav.getBoundingClientRect();
+  const iconRect = iconEl.getBoundingClientRect();
+  const size = utilityNavIndicator.offsetWidth || 42;
+  const x = (iconRect.left - navRect.left) + iconRect.width / 2 - size / 2;
+  const y = (iconRect.top - navRect.top) + iconRect.height / 2 - size / 2;
+  utilityNavIndicator.style.transform = `translate(${x}px, ${y}px)`;
+}
+function setActiveNav(btn){
+  if(!btn) return;
+  document.querySelectorAll(".utility-nav-btn.is-active").forEach(b=>b.classList.remove("is-active"));
+  btn.classList.add("is-active");
+  activeNavBtn = btn;
+  moveIndicatorTo(btn);
+}
+utilityNav.addEventListener("click", (e)=>{
+  const btn = e.target.closest(".utility-nav-btn");
+  if(btn) setActiveNav(btn);
+});
+
 menuSection.addEventListener("click", (e)=>{
   const addBtn = e.target.closest(".btn-add");
   if(!addBtn || addBtn.disabled) return;
@@ -2175,6 +2207,7 @@ function setLanguage(lang){
   renderMenu();
   updateCartUI();
   updatePrefsPanelSelections();
+  if(activeNavBtn) moveIndicatorTo(activeNavBtn); // labels reflow + RTL can flip the icon's position
 }
 function setLanguageWithTransition(lang){
   if(lang === state.lang) return;
@@ -2236,21 +2269,6 @@ prefsPanel.addEventListener("click", (e)=>{
 });
 
 let callWaiterCooldownUntil = 0;
-let callWaiterCooldownTimer = null;
-function updateCallWaiterButtonState(){
-  const remaining = callWaiterCooldownUntil - Date.now();
-  if(remaining > 0){
-    callWaiterBtn.disabled = true;
-    callWaiterHint.textContent = t("callWaiterCooldown", { seconds: Math.ceil(remaining / 1000) });
-  }else{
-    callWaiterBtn.disabled = false;
-    callWaiterHint.textContent = "";
-    if(callWaiterCooldownTimer){ clearInterval(callWaiterCooldownTimer); callWaiterCooldownTimer = null; }
-  }
-}
-// Shared by both the Preferences-panel "Call a waiter" button and the
-// utility-nav "Call Server" confirm dialog, so a call sent from either one
-// puts BOTH surfaces on the same cooldown (can't bypass one via the other).
 async function submitAssistanceCall(table){
   try{
     const res = await fetch("/api/assistance-calls", {
@@ -2270,28 +2288,6 @@ async function submitAssistanceCall(table){
     return { ok:false, error:true };
   }
 }
-async function handleCallWaiter(){
-  const table = callTableInput.value.trim();
-  if(!table){
-    callWaiterHint.textContent = t("tableRequired");
-    callTableInput.focus();
-    return;
-  }
-  saveToStorage(STORAGE_KEYS.table, table);
-  callWaiterBtn.disabled = true;
-  const result = await submitAssistanceCall(table);
-  if(result.ok){
-    showToast(t("callWaiterSent"));
-  }else if(!result.cooldownSeconds){
-    showToast(t("callWaiterError"));
-    callWaiterBtn.disabled = false;
-    return;
-  }
-  updateCallWaiterButtonState();
-  if(callWaiterCooldownTimer) clearInterval(callWaiterCooldownTimer);
-  callWaiterCooldownTimer = setInterval(updateCallWaiterButtonState, 1000);
-}
-callWaiterBtn.addEventListener("click", handleCallWaiter);
 
 /* =========================================================================
    CALL SERVER — utility-nav entry point for the same assistance-call
@@ -2352,9 +2348,6 @@ async function confirmCallServer(){
   }else{
     callServerDialogHint.textContent = t("callWaiterError");
   }
-  updateCallWaiterButtonState();
-  if(callWaiterCooldownTimer) clearInterval(callWaiterCooldownTimer);
-  callWaiterCooldownTimer = setInterval(updateCallWaiterButtonState, 1000);
 }
 navCallServerBtn.addEventListener("click", openCallServerDialog);
 callServerCancelBtn.addEventListener("click", closeCallServerDialog);
@@ -2379,7 +2372,10 @@ function updateHeaderScrollState(){
   siteHeader.classList.toggle("is-scrolled", window.scrollY > 8);
 }
 window.addEventListener("scroll", updateHeaderScrollState, { passive:true });
-window.addEventListener("resize", ()=>{ if(!state.cartOpen) setupScrollSpy(); });
+window.addEventListener("resize", ()=>{
+  if(!state.cartOpen) setupScrollSpy();
+  if(activeNavBtn) moveIndicatorTo(activeNavBtn);
+});
 
 /* =========================================================================
    FETCH LIVE DATA — categories/menu items and the CMS-editable restaurant
@@ -2505,7 +2501,6 @@ async function init(){
   document.documentElement.style.colorScheme = appliedTheme;
 
   tableNumberInput.value = savedTable || "";
-  callTableInput.value = savedTable || "";
 
   applyTranslations();
   updatePrefsPanelSelections();
@@ -2529,6 +2524,7 @@ async function init(){
     if(minVisibleRemaining > 0) await new Promise(r => setTimeout(r, minVisibleRemaining));
   }
   hideLoadingSplash();
+  setActiveNav(cartToggleBtn); // Cart is the default active/emphasized dock item
   await checkTrackQueryParam();
   updateOrderResumeBanner();
 }
