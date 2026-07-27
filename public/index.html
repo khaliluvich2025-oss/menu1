@@ -387,13 +387,6 @@
   }
   .hero-headline{ font-size:clamp(1.8rem, 5vw, 2.6rem); font-weight:800; letter-spacing:-.02em; line-height:1.08; margin-bottom:12px; }
   .hero-subtext{ font-size:1rem; color:var(--text-muted); max-width:46ch; margin-bottom:16px; }
-  .hero-promo{
-    display:inline-flex; align-items:center; gap:10px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--radius-md); padding:10px 14px; margin-bottom:18px;
-    font-weight:600; font-size:.88rem;
-  }
-  .hero-promo-badge{ background:var(--primary); color:var(--text-on-ember); font-weight:800; font-size:.75rem; padding:3px 8px; border-radius:6px; }
   .hero-cta{ width:100%; max-width:280px; }
 
   .hero-image-frame{
@@ -929,10 +922,6 @@
         <p class="hero-kicker" id="heroKicker">Ouvert aujourd'hui · 12h00–23h30</p>
         <h1 class="hero-headline" id="heroHeadline">Bonne bouffe. Meilleure humeur.</h1>
         <p class="hero-subtext" id="heroSubtext">Saveurs fraîches, associations audacieuses et commande à table sans effort.</p>
-        <div class="hero-promo">
-          <span class="hero-promo-badge">-20%</span>
-          <span id="heroPromoText">Spicy Burger Combo — 20% offerts</span>
-        </div>
         <div>
           <button type="button" class="btn btn-primary hero-cta" id="heroCta" data-i18n="heroCta">Voir le menu</button>
         </div>
@@ -2230,14 +2219,8 @@ function applyTranslations(){
     en:"Fresh flavours, bold combinations, and effortless table ordering.",
     ar:"نكهات طازجة، تركيبات جريئة، وطلب سهل من الطاولة."
   };
-  const heroPromos = {
-    fr:"Spicy Burger Combo — 20% offerts",
-    en:"Spicy Burger Combo — 20% OFF",
-    ar:"سبايسي برغر كومبو — خصم 20%"
-  };
   document.getElementById("heroHeadline").textContent = heroHeadlines[state.lang] || heroHeadlines.en;
   document.getElementById("heroSubtext").textContent = heroSubtexts[state.lang] || heroSubtexts.en;
-  document.getElementById("heroPromoText").textContent = heroPromos[state.lang] || heroPromos.en;
   heroImage.setAttribute("alt", state.lang === "ar" ? "طبق مميز من إمبر تيبل" : (state.lang === "en" ? "Ember Table signature dish" : "Assiette signature Ember Table"));
 
   document.getElementById("infoAddressValue").textContent = restaurantConfig.address[state.lang] || restaurantConfig.address.en;
