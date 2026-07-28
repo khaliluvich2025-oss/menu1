@@ -1,0 +1,1819 @@
+From d4ef61235116996739ba5136d6936ef5af460b81 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 28 Jul 2026 08:38:38 +0000
+Subject: [PATCH] Add French and Arabic translations to the admin CMS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The admin panel's own interface (nav, buttons, forms, toasts, order
+statuses, dashboard) was English-only, unlike the customer-facing site
+which already supports fr/en/ar. Mirrors that same data-i18n / t() /
+translations pattern:
+
+- admin.js: state.lang + localStorage persistence, t(key, vars),
+  applyTranslations(), setLanguage(), and a full en/fr/ar dictionary
+  (181 keys) covering every static and dynamically-rendered string
+  (orders, menu items, categories, dashboard/stats, all modals, toasts,
+  confirm() dialogs).
+- index.html: data-i18n / data-i18n-title / data-i18n-aria attributes
+  on static markup, plus a compact FR/EN/AR language switcher on both
+  the login screen and the app header.
+- admin.css: loads Noto Kufi Arabic (same font already used on the
+  customer site) and swaps to it via --font-body when dir="rtl". No
+  other RTL-specific overrides were needed — the existing CSS already
+  uses logical properties (margin-inline-*, text-align:end, etc.)
+  throughout, so layout mirrors automatically.
+
+Defaults to English (opt-in) so existing staff see no change unless
+they pick a different language.
+---
+ public/admin/admin.css  |  29 +-
+ public/admin/admin.js   | 960 ++++++++++++++++++++++++++++++++++------
+ public/admin/index.html | 158 +++----
+ 3 files changed, 922 insertions(+), 225 deletions(-)
+
+diff --git a/public/admin/admin.css b/public/admin/admin.css
+index d3f826f..c5324cd 100644
+--- a/public/admin/admin.css
++++ b/public/admin/admin.css
+@@ -23,18 +23,24 @@ html, body { margin: 0; padding: 0; }
+   --radius-md:12px;
+   --shadow-1: 0 1px 2px rgba(20,18,14,.06);
+   --shadow-2: 0 12px 28px rgba(20,18,14,.14);
++  --font-latin: 'Inter', system-ui, "Segoe UI", Arial, sans-serif;
++  --font-arabic: 'Noto Kufi Arabic', Tahoma, Arial, sans-serif;
++  --font-body: var(--font-latin);
+ }
++/* Swapped to the Arabic-optimized stack whenever admin.js sets dir="rtl"
++   (Arabic UI selected) — same mechanism as the public site's i18n. */
++html[dir="rtl"]{ --font-body: var(--font-arabic); }
+ 
+ body{
+   background: var(--bg);
+   color: var(--text);
+-  font-family: 'Inter', system-ui, "Segoe UI", Arial, sans-serif;
++  font-family: var(--font-body);
+   line-height:1.4;
+   min-height:100vh;
+ }
+-h1,h2,h3 { margin:0; }
+-button { font-family:inherit; }
+-input, select, textarea { font-family:inherit; font-size:.92rem; }
++h1,h2,h3 { margin:0; font-family:var(--font-body); }
++button { font-family:var(--font-body); }
++input, select, textarea { font-family:var(--font-body); font-size:.92rem; }
+ 
+ :focus-visible{ outline:2px solid var(--ember); outline-offset:2px; }
+ 
+@@ -150,6 +156,21 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
+ .admin-user .btn-ghost{ color:#fff; border-color:rgba(255,255,255,.25); }
+ .admin-user .btn-ghost:hover{ border-color:var(--ember); color:var(--ember); }
+ 
++/* ---------- LANGUAGE SWITCHER (FR / EN / AR) ---------- */
++.lang-switcher{ display:flex; gap:2px; background:rgba(255,255,255,.08); border-radius:var(--radius-sm); padding:2px; flex-shrink:0; }
++.lang-btn{
++  background:transparent; border:none; color:rgba(255,255,255,.65); font-weight:800; font-size:.72rem;
++  padding:5px 9px; border-radius:6px; cursor:pointer; letter-spacing:.02em;
++}
++.lang-btn:hover{ color:#fff; }
++.lang-btn.is-active{ background:var(--ember); color:var(--text-on-ember); }
++/* Login card has a light background — the header's dark-on-dark styling
++   above would be invisible there, so it gets its own light-surface variant. */
++.login-card .lang-switcher{ align-self:flex-end; background:var(--surface-alt); margin-bottom:-4px; }
++.login-card .lang-btn{ color:var(--text-muted); }
++.login-card .lang-btn:hover{ color:var(--text); }
++.login-card .lang-btn.is-active{ background:var(--primary); color:var(--text-on-ember); }
++
+ .admin-main{ max-width:1100px; margin:0 auto; padding:28px 20px 60px; }
+ .admin-view .view-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+ .admin-view h2{ font-size:1.3rem; font-weight:800; }
+diff --git a/public/admin/admin.js b/public/admin/admin.js
+index c07f524..d4c7ac4 100644
+--- a/public/admin/admin.js
++++ b/public/admin/admin.js
+@@ -16,7 +16,8 @@ const state = {
+   statsCustomEnd: null,
+   statsStatus: "",
+   soundEnabled: true, // placeholder, overwritten by loadSoundPref() at init
+-  autoPrintEnabled: false // placeholder, overwritten by loadAutoPrintPref() at init
++  autoPrintEnabled: false, // placeholder, overwritten by loadAutoPrintPref() at init
++  lang: "en" // placeholder, overwritten by loadLangPref() at init
+ };
+ 
+ const ORDERS_POLL_MS = 3500; // was 8000 — snappier alerts, matches the public tracker's 4000ms cadence
+@@ -27,6 +28,666 @@ let statsPollTimer = null;
+ const chimedOrderIds = new Set(); // ids already chimed for — never replay
+ const newOrderTimers = new Map(); // orderId -> setTimeout handle, so it can be cancelled
+ 
++// ---------------------------------------------------------------- i18n
++// Same data-i18n / t() / translations pattern already used on the public
++// site (public/index.html) — kept independent (own dictionary, own storage
++// key) since the admin panel is a separate app with its own string set.
++const ADMIN_LANG_KEY = "emberTable.admin.lang";
++
++const adminTranslations = {
++  en: {
++    loginTitle: "Ember Table CMS",
++    loginSubtitle: "Sign in to manage the menu and restaurant info.",
++    fieldUsername: "Username",
++    fieldPassword: "Password",
++    signIn: "Sign in",
++    errLocked: "Too many attempts. Try again in a bit.",
++    errInvalidCreds: "Incorrect username or password.",
++
++    adminTitleSuffix: "Admin",
++    navOrders: "Orders",
++    navDashboard: "Dashboard",
++    navMenuItems: "Menu items",
++    navCategories: "Categories",
++    navRestaurantInfo: "Restaurant info",
++    soundLabel: "Sound",
++    autoPrintLabel: "Auto-print",
++    soundToggleTitle: "Toggle sound alerts for new orders",
++    autoPrintToggleTitle: "Automatically open the print dialog for a kitchen ticket when a new order arrives",
++    viewSite: "View site ↗",
++    viewSiteTitle: "Opens the customer-facing site in a new tab",
++    changePasswordBtn: "Change password",
++    logOut: "Log out",
++
++    autoRefresh: "Auto-refresh",
++    ordersEmptyHint: "No orders yet. New orders placed from the menu will show up here automatically.",
++    toastNewOrder: "New order received.",
++    toastNewOrders: "{count} new orders received.",
++    tableWord: "Table",
++    newBadge: "New",
++    printTicketBtn: "🖨️ Print ticket",
++    notePlaceholder: "Optional note for this update…",
++    reject: "Reject",
++    cancel: "Cancel",
++    markAsStatus: "Mark as {status} →",
++    toastOrderMarked: "Order marked {status}.",
++    errCouldNotLoadOrders: "Could not load orders.",
++    errCouldNotUpdateOrder: "Could not update order.",
++    status_received: "Received",
++    status_confirmed: "Confirmed",
++    status_preparing: "Preparing",
++    status_ready: "Ready",
++    status_completed: "Completed",
++    status_cancelled: "Cancelled",
++    status_rejected: "Rejected",
++    justNow: "just now",
++    minAgo: "{n}m ago",
++
++    assistanceNeedsHelp: "🔔 Table {table} needs assistance",
++    acknowledge: "Acknowledge",
++    errCouldNotAcknowledge: "Could not acknowledge.",
++
++    ticketTime: "Time",
++    ticketTotal: "Total",
++    ticketNote: "Note: {note}",
++    ticketPrinted: "Printed {datetime}",
++
++    forcedPasswordHint: "This account was created with a temporary password. Please set a new one to continue.",
++    currentPassword: "Current password",
++    newPasswordMin8: "New password (min. 8 characters)",
++    confirmNewPassword: "Confirm new password",
++    errPasswordsDontMatch: "New passwords don't match.",
++    errCouldNotChangePassword: "Could not change password.",
++    toastPasswordUpdated: "Password updated.",
++    saveNewPassword: "Save new password",
++
++    addDish: "+ Add dish",
++    tagFeatured: "Featured",
++    tagRecommended: "Recommended",
++    tagOffer: "Offer",
++    tagSoldOut: "Sold out",
++    availableTitle: "Available",
++    moveUpTitle: "Move up",
++    moveDownTitle: "Move down",
++    edit: "Edit",
++    deleteWord: "Delete",
++    toastMarkedAvailable: "Marked available.",
++    toastMarkedSoldOut: "Marked sold out.",
++    errCouldNotUpdateAvailability: "Could not update availability.",
++    errCouldNotReorder: "Could not reorder.",
++    confirmDeleteDish: "Delete \"{name}\"? This cannot be undone.",
++    toastDishDeleted: "Dish deleted.",
++    errCouldNotDeleteDish: "Could not delete dish.",
++
++    editDishTitle: "Edit dish",
++    addDishTitle: "Add dish",
++    categoryLabel: "Category",
++    nameEnglish: "Name (English)",
++    nameFrench: "Name (French)",
++    nameArabic: "Name (Arabic)",
++    descEnglish: "Description (English)",
++    descFrench: "Description (French)",
++    descArabic: "Description (Arabic)",
++    priceMad: "Price (MAD)",
++    discountPriceOptional: "Discount price (optional)",
++    photoLabel: "Photo",
++    noPhoto: "No photo",
++    uploadingText: "Uploading…",
++    uploadFailedText: "Upload failed",
++    dishOptionsLegend: "Dish options (size, sauces, extras — optional)",
++    addOptionGroup: "+ Add option group",
++    saveChanges: "Save changes",
++    toastDishAdded: "Dish added.",
++    toastDishUpdated: "Dish updated.",
++    errCouldNotSaveDish: "Could not save dish.",
++    errImageUploadFailed: "Image upload failed.",
++
++    optNameEnPh: "Option (English) e.g. Large",
++    optNameFrPh: "Option (French)",
++    optNameArPh: "Option (Arabic)",
++    optPriceDeltaPh: "+MAD",
++    removeOptionTitle: "Remove option",
++    grpNameEnPh: "Group name (English) e.g. Size",
++    grpNameFrPh: "Group name (French)",
++    grpNameArPh: "Group name (Arabic)",
++    pickOne: "Pick one",
++    pickAny: "Pick any",
++    requiredCheckTitle: "Customer must pick one option in this group",
++    requiredWord: "Required",
++    removeGroup: "Remove group",
++    addOption: "+ Add option",
++
++    addCategory: "+ Add category",
++    confirmDeleteCategory: "Delete category \"{name}\"? It must have no dishes in it.",
++    toastCategoryDeleted: "Category deleted.",
++    errCouldNotDeleteCategory: "Could not delete category.",
++    editCategoryTitle: "Edit category",
++    addCategoryTitle: "Add category",
++    toastCategoryAdded: "Category added.",
++    toastCategoryUpdated: "Category updated.",
++    errCouldNotSaveCategory: "Could not save category.",
++
++    brandingHint: "Colors, default language/theme, and other branding are set in the code template and aren't editable here.",
++    logoLabel: "Logo",
++    coverImageLabel: "Cover image (homepage)",
++    whatsappLabel: "WhatsApp number (digits only, country code first)",
++    phoneDisplayedLabel: "Phone (displayed)",
++    phoneLinkLabel: "Phone link (tel:)",
++    googleMapsLabel: "Google Maps URL",
++    googleReviewLabel: "Google Review URL",
++    webhookLabel: "Webhook URL (optional — POS / Zapier / custom integration)",
++    webhookHint: "Every new order and status change gets POSTed here as JSON. Leave blank to disable.",
++    openingHoursLegend: "Opening hours",
++    addressLegend: "Address",
++    socialLinksLegend: "Social links",
++    frenchLabel: "French",
++    englishLabel: "English",
++    arabicLabel: "Arabic",
++    instagramUrlLabel: "Instagram URL",
++    facebookUrlLabel: "Facebook URL",
++    tiktokUrlLabel: "TikTok URL",
++    saveRestaurantInfo: "Save restaurant info",
++    toastRestaurantInfoSaved: "Restaurant info saved.",
++    errCouldNotSaveRestaurantInfo: "Could not save restaurant info.",
++    errCouldNotLoadRestaurantInfo: "Could not load restaurant info.",
++    errCouldNotLoadData: "Could not load data.",
++
++    exportCsv: "Export CSV",
++    presetToday: "Today",
++    presetWeek: "This week",
++    presetMonth: "This month",
++    presetCustom: "Custom range",
++    ariaDateRange: "Date range",
++    ariaCustomStart: "Custom range start",
++    ariaCustomEnd: "Custom range end",
++    ariaStatusFilter: "Filter by order status",
++    applyBtn: "Apply",
++    allStatuses: "All statuses",
++    statusPendingOpt: "Pending",
++    statusCompletedOpt: "Completed",
++    statusCancelledOpt: "Cancelled",
++    dineInNote: "Dine-in is the only order type this menu supports, so there's no order-type filter to show yet.",
++    revenueWord: "Revenue",
++    chartRevenueOverTime: "Revenue over time",
++    chartOrdersOverTime: "Orders over time",
++    chartBestSelling: "Best-selling products",
++    chartTopCategories: "Top categories",
++    chartBusiestHours: "Busiest hours",
++    chartStatusDistribution: "Order status distribution",
++    kpiTotalOrders: "Total orders",
++    kpiTotalRevenue: "Total revenue",
++    kpiAvgOrderValue: "Average order value",
++    noChangeVsPrevious: "No change vs previous period",
++    newVsPrevious: "New vs previous period",
++    vsPreviousPeriod: "vs previous period",
++    pickBothDates: "Pick both a start and end date.",
++    startBeforeEnd: "Start date must be before end date.",
++    noRevenuePeriod: "No revenue in this period.",
++    noOrdersPeriod: "No orders in this period.",
++    noItemsSoldPeriod: "No items sold in this period.",
++    noSalesPeriod: "No sales in this period.",
++    soldSuffix: "{n} sold",
++    errCouldNotLoadStats: "Could not load statistics."
++  },
++  fr: {
++    loginTitle: "Ember Table CMS",
++    loginSubtitle: "Connectez-vous pour gérer le menu et les informations du restaurant.",
++    fieldUsername: "Nom d'utilisateur",
++    fieldPassword: "Mot de passe",
++    signIn: "Se connecter",
++    errLocked: "Trop de tentatives. Réessayez dans quelques instants.",
++    errInvalidCreds: "Nom d'utilisateur ou mot de passe incorrect.",
++
++    adminTitleSuffix: "Administration",
++    navOrders: "Commandes",
++    navDashboard: "Tableau de bord",
++    navMenuItems: "Plats du menu",
++    navCategories: "Catégories",
++    navRestaurantInfo: "Infos du restaurant",
++    soundLabel: "Son",
++    autoPrintLabel: "Impression auto",
++    soundToggleTitle: "Activer/désactiver les alertes sonores pour les nouvelles commandes",
++    autoPrintToggleTitle: "Ouvre automatiquement la fenêtre d'impression du ticket cuisine à l'arrivée d'une nouvelle commande",
++    viewSite: "Voir le site ↗",
++    viewSiteTitle: "Ouvre le site client dans un nouvel onglet",
++    changePasswordBtn: "Changer le mot de passe",
++    logOut: "Déconnexion",
++
++    autoRefresh: "Actualisation auto",
++    ordersEmptyHint: "Aucune commande pour l'instant. Les nouvelles commandes passées depuis le menu apparaîtront ici automatiquement.",
++    toastNewOrder: "Nouvelle commande reçue.",
++    toastNewOrders: "{count} nouvelles commandes reçues.",
++    tableWord: "Table",
++    newBadge: "Nouveau",
++    printTicketBtn: "🖨️ Imprimer le ticket",
++    notePlaceholder: "Note facultative pour cette mise à jour…",
++    reject: "Refuser",
++    cancel: "Annuler",
++    markAsStatus: "Marquer comme {status} →",
++    toastOrderMarked: "Commande marquée {status}.",
++    errCouldNotLoadOrders: "Impossible de charger les commandes.",
++    errCouldNotUpdateOrder: "Impossible de mettre à jour la commande.",
++    status_received: "Reçue",
++    status_confirmed: "Confirmée",
++    status_preparing: "En préparation",
++    status_ready: "Prête",
++    status_completed: "Terminée",
++    status_cancelled: "Annulée",
++    status_rejected: "Refusée",
++    justNow: "à l'instant",
++    minAgo: "il y a {n} min",
++
++    assistanceNeedsHelp: "🔔 La table {table} a besoin d'assistance",
++    acknowledge: "Marquer comme vu",
++    errCouldNotAcknowledge: "Impossible de valider.",
++
++    ticketTime: "Heure",
++    ticketTotal: "Total",
++    ticketNote: "Note : {note}",
++    ticketPrinted: "Imprimé le {datetime}",
++
++    forcedPasswordHint: "Ce compte a été créé avec un mot de passe temporaire. Merci d'en définir un nouveau pour continuer.",
++    currentPassword: "Mot de passe actuel",
++    newPasswordMin8: "Nouveau mot de passe (min. 8 caractères)",
++    confirmNewPassword: "Confirmer le nouveau mot de passe",
++    errPasswordsDontMatch: "Les nouveaux mots de passe ne correspondent pas.",
++    errCouldNotChangePassword: "Impossible de changer le mot de passe.",
++    toastPasswordUpdated: "Mot de passe mis à jour.",
++    saveNewPassword: "Enregistrer le nouveau mot de passe",
++
++    addDish: "+ Ajouter un plat",
++    tagFeatured: "En vedette",
++    tagRecommended: "Recommandé",
++    tagOffer: "Promo",
++    tagSoldOut: "Épuisé",
++    availableTitle: "Disponible",
++    moveUpTitle: "Monter",
++    moveDownTitle: "Descendre",
++    edit: "Modifier",
++    deleteWord: "Supprimer",
++    toastMarkedAvailable: "Marqué disponible.",
++    toastMarkedSoldOut: "Marqué épuisé.",
++    errCouldNotUpdateAvailability: "Impossible de mettre à jour la disponibilité.",
++    errCouldNotReorder: "Impossible de réorganiser.",
++    confirmDeleteDish: "Supprimer « {name} » ? Cette action est irréversible.",
++    toastDishDeleted: "Plat supprimé.",
++    errCouldNotDeleteDish: "Impossible de supprimer le plat.",
++
++    editDishTitle: "Modifier le plat",
++    addDishTitle: "Ajouter un plat",
++    categoryLabel: "Catégorie",
++    nameEnglish: "Nom (Anglais)",
++    nameFrench: "Nom (Français)",
++    nameArabic: "Nom (Arabe)",
++    descEnglish: "Description (Anglais)",
++    descFrench: "Description (Français)",
++    descArabic: "Description (Arabe)",
++    priceMad: "Prix (MAD)",
++    discountPriceOptional: "Prix promo (facultatif)",
++    photoLabel: "Photo",
++    noPhoto: "Aucune photo",
++    uploadingText: "Envoi en cours…",
++    uploadFailedText: "Échec de l'envoi",
++    dishOptionsLegend: "Options du plat (taille, sauces, suppléments — facultatif)",
++    addOptionGroup: "+ Ajouter un groupe d'options",
++    saveChanges: "Enregistrer les modifications",
++    toastDishAdded: "Plat ajouté.",
++    toastDishUpdated: "Plat mis à jour.",
++    errCouldNotSaveDish: "Impossible d'enregistrer le plat.",
++    errImageUploadFailed: "Échec de l'envoi de l'image.",
++
++    optNameEnPh: "Option (Anglais) ex. Grand",
++    optNameFrPh: "Option (Français)",
++    optNameArPh: "Option (Arabe)",
++    optPriceDeltaPh: "+MAD",
++    removeOptionTitle: "Supprimer l'option",
++    grpNameEnPh: "Nom du groupe (Anglais) ex. Taille",
++    grpNameFrPh: "Nom du groupe (Français)",
++    grpNameArPh: "Nom du groupe (Arabe)",
++    pickOne: "Choix unique",
++    pickAny: "Choix multiple",
++    requiredCheckTitle: "Le client doit choisir une option dans ce groupe",
++    requiredWord: "Obligatoire",
++    removeGroup: "Supprimer le groupe",
++    addOption: "+ Ajouter une option",
++
++    addCategory: "+ Ajouter une catégorie",
++    confirmDeleteCategory: "Supprimer la catégorie « {name} » ? Elle ne doit contenir aucun plat.",
++    toastCategoryDeleted: "Catégorie supprimée.",
++    errCouldNotDeleteCategory: "Impossible de supprimer la catégorie.",
++    editCategoryTitle: "Modifier la catégorie",
++    addCategoryTitle: "Ajouter une catégorie",
++    toastCategoryAdded: "Catégorie ajoutée.",
++    toastCategoryUpdated: "Catégorie mise à jour.",
++    errCouldNotSaveCategory: "Impossible d'enregistrer la catégorie.",
++
++    brandingHint: "Les couleurs, la langue/thème par défaut et les autres éléments de marque sont définis dans le modèle de code et ne sont pas modifiables ici.",
++    logoLabel: "Logo",
++    coverImageLabel: "Image de couverture (page d'accueil)",
++    whatsappLabel: "Numéro WhatsApp (chiffres uniquement, indicatif pays en premier)",
++    phoneDisplayedLabel: "Téléphone (affiché)",
++    phoneLinkLabel: "Lien téléphone (tel:)",
++    googleMapsLabel: "URL Google Maps",
++    googleReviewLabel: "URL avis Google",
++    webhookLabel: "URL du webhook (facultatif — caisse / Zapier / intégration personnalisée)",
++    webhookHint: "Chaque nouvelle commande et changement de statut est envoyé ici en JSON. Laisser vide pour désactiver.",
++    openingHoursLegend: "Horaires d'ouverture",
++    addressLegend: "Adresse",
++    socialLinksLegend: "Réseaux sociaux",
++    frenchLabel: "Français",
++    englishLabel: "Anglais",
++    arabicLabel: "Arabe",
++    instagramUrlLabel: "URL Instagram",
++    facebookUrlLabel: "URL Facebook",
++    tiktokUrlLabel: "URL TikTok",
++    saveRestaurantInfo: "Enregistrer les infos du restaurant",
++    toastRestaurantInfoSaved: "Infos du restaurant enregistrées.",
++    errCouldNotSaveRestaurantInfo: "Impossible d'enregistrer les infos du restaurant.",
++    errCouldNotLoadRestaurantInfo: "Impossible de charger les infos du restaurant.",
++    errCouldNotLoadData: "Impossible de charger les données.",
++
++    exportCsv: "Exporter en CSV",
++    presetToday: "Aujourd'hui",
++    presetWeek: "Cette semaine",
++    presetMonth: "Ce mois-ci",
++    presetCustom: "Période personnalisée",
++    ariaDateRange: "Période",
++    ariaCustomStart: "Début de la période personnalisée",
++    ariaCustomEnd: "Fin de la période personnalisée",
++    ariaStatusFilter: "Filtrer par statut de commande",
++    applyBtn: "Appliquer",
++    allStatuses: "Tous les statuts",
++    statusPendingOpt: "En attente",
++    statusCompletedOpt: "Terminé",
++    statusCancelledOpt: "Annulé",
++    dineInNote: "Sur place est le seul type de commande pris en charge par ce menu, il n'y a donc pas encore de filtre par type de commande.",
++    revenueWord: "Recettes",
++    chartRevenueOverTime: "Recettes dans le temps",
++    chartOrdersOverTime: "Commandes dans le temps",
++    chartBestSelling: "Produits les plus vendus",
++    chartTopCategories: "Meilleures catégories",
++    chartBusiestHours: "Heures d'affluence",
++    chartStatusDistribution: "Répartition des statuts de commande",
++    kpiTotalOrders: "Total des commandes",
++    kpiTotalRevenue: "Recettes totales",
++    kpiAvgOrderValue: "Panier moyen",
++    noChangeVsPrevious: "Aucun changement vs période précédente",
++    newVsPrevious: "Nouveau vs période précédente",
++    vsPreviousPeriod: "vs période précédente",
++    pickBothDates: "Choisissez une date de début et de fin.",
++    startBeforeEnd: "La date de début doit précéder la date de fin.",
++    noRevenuePeriod: "Aucune recette sur cette période.",
++    noOrdersPeriod: "Aucune commande sur cette période.",
++    noItemsSoldPeriod: "Aucun article vendu sur cette période.",
++    noSalesPeriod: "Aucune vente sur cette période.",
++    soldSuffix: "{n} vendus",
++    errCouldNotLoadStats: "Impossible de charger les statistiques."
++  },
++  ar: {
++    loginTitle: "Ember Table CMS",
++    loginSubtitle: "سجّل الدخول لإدارة القائمة ومعلومات المطعم.",
++    fieldUsername: "اسم المستخدم",
++    fieldPassword: "كلمة المرور",
++    signIn: "تسجيل الدخول",
++    errLocked: "محاولات كثيرة جدًا. حاول مرة أخرى بعد قليل.",
++    errInvalidCreds: "اسم المستخدم أو كلمة المرور غير صحيحة.",
++
++    adminTitleSuffix: "الإدارة",
++    navOrders: "الطلبات",
++    navDashboard: "لوحة التحكم",
++    navMenuItems: "أصناف القائمة",
++    navCategories: "الفئات",
++    navRestaurantInfo: "معلومات المطعم",
++    soundLabel: "الصوت",
++    autoPrintLabel: "طباعة تلقائية",
++    soundToggleTitle: "تفعيل/إيقاف التنبيهات الصوتية للطلبات الجديدة",
++    autoPrintToggleTitle: "فتح نافذة طباعة تذكرة المطبخ تلقائيًا عند وصول طلب جديد",
++    viewSite: "عرض الموقع ↗",
++    viewSiteTitle: "يفتح موقع العملاء في تبويب جديد",
++    changePasswordBtn: "تغيير كلمة المرور",
++    logOut: "تسجيل الخروج",
++
++    autoRefresh: "تحديث تلقائي",
++    ordersEmptyHint: "لا توجد طلبات بعد. ستظهر هنا تلقائيًا الطلبات الجديدة المرسلة من القائمة.",
++    toastNewOrder: "تم استلام طلب جديد.",
++    toastNewOrders: "تم استلام {count} طلبات جديدة.",
++    tableWord: "الطاولة",
++    newBadge: "جديد",
++    printTicketBtn: "🖨️ طباعة التذكرة",
++    notePlaceholder: "ملاحظة اختيارية لهذا التحديث…",
++    reject: "رفض",
++    cancel: "إلغاء",
++    markAsStatus: "تحديد كـ {status} ←",
++    toastOrderMarked: "تم تحديد الطلب كـ {status}.",
++    errCouldNotLoadOrders: "تعذّر تحميل الطلبات.",
++    errCouldNotUpdateOrder: "تعذّر تحديث الطلب.",
++    status_received: "تم الاستلام",
++    status_confirmed: "مؤكد",
++    status_preparing: "قيد التحضير",
++    status_ready: "جاهز",
++    status_completed: "مكتمل",
++    status_cancelled: "ملغى",
++    status_rejected: "مرفوض",
++    justNow: "الآن",
++    minAgo: "منذ {n} د",
++
++    assistanceNeedsHelp: "🔔 الطاولة {table} بحاجة إلى مساعدة",
++    acknowledge: "تم الاطلاع",
++    errCouldNotAcknowledge: "تعذّر التأكيد.",
++
++    ticketTime: "الوقت",
++    ticketTotal: "المجموع",
++    ticketNote: "ملاحظة: {note}",
++    ticketPrinted: "طُبع في {datetime}",
++
++    forcedPasswordHint: "تم إنشاء هذا الحساب بكلمة مرور مؤقتة. يرجى تعيين كلمة جديدة للمتابعة.",
++    currentPassword: "كلمة المرور الحالية",
++    newPasswordMin8: "كلمة المرور الجديدة (8 أحرف على الأقل)",
++    confirmNewPassword: "تأكيد كلمة المرور الجديدة",
++    errPasswordsDontMatch: "كلمتا المرور الجديدتان غير متطابقتين.",
++    errCouldNotChangePassword: "تعذّر تغيير كلمة المرور.",
++    toastPasswordUpdated: "تم تحديث كلمة المرور.",
++    saveNewPassword: "حفظ كلمة المرور الجديدة",
++
++    addDish: "+ إضافة طبق",
++    tagFeatured: "مميز",
++    tagRecommended: "موصى به",
++    tagOffer: "عرض",
++    tagSoldOut: "نفدت الكمية",
++    availableTitle: "متوفر",
++    moveUpTitle: "تحريك لأعلى",
++    moveDownTitle: "تحريك لأسفل",
++    edit: "تعديل",
++    deleteWord: "حذف",
++    toastMarkedAvailable: "تم التحديد كمتوفر.",
++    toastMarkedSoldOut: "تم التحديد كنافد.",
++    errCouldNotUpdateAvailability: "تعذّر تحديث التوفر.",
++    errCouldNotReorder: "تعذّر إعادة الترتيب.",
++    confirmDeleteDish: "حذف «{name}»؟ لا يمكن التراجع عن هذا الإجراء.",
++    toastDishDeleted: "تم حذف الطبق.",
++    errCouldNotDeleteDish: "تعذّر حذف الطبق.",
++
++    editDishTitle: "تعديل الطبق",
++    addDishTitle: "إضافة طبق",
++    categoryLabel: "الفئة",
++    nameEnglish: "الاسم (إنجليزي)",
++    nameFrench: "الاسم (فرنسي)",
++    nameArabic: "الاسم (عربي)",
++    descEnglish: "الوصف (إنجليزي)",
++    descFrench: "الوصف (فرنسي)",
++    descArabic: "الوصف (عربي)",
++    priceMad: "السعر (درهم)",
++    discountPriceOptional: "سعر الخصم (اختياري)",
++    photoLabel: "صورة",
++    noPhoto: "لا توجد صورة",
++    uploadingText: "جارٍ الرفع…",
++    uploadFailedText: "فشل الرفع",
++    dishOptionsLegend: "خيارات الطبق (الحجم، الصلصات، الإضافات — اختياري)",
++    addOptionGroup: "+ إضافة مجموعة خيارات",
++    saveChanges: "حفظ التغييرات",
++    toastDishAdded: "تمت إضافة الطبق.",
++    toastDishUpdated: "تم تحديث الطبق.",
++    errCouldNotSaveDish: "تعذّر حفظ الطبق.",
++    errImageUploadFailed: "فشل رفع الصورة.",
++
++    optNameEnPh: "خيار (إنجليزي) مثال: كبير",
++    optNameFrPh: "خيار (فرنسي)",
++    optNameArPh: "خيار (عربي)",
++    optPriceDeltaPh: "+درهم",
++    removeOptionTitle: "حذف الخيار",
++    grpNameEnPh: "اسم المجموعة (إنجليزي) مثال: الحجم",
++    grpNameFrPh: "اسم المجموعة (فرنسي)",
++    grpNameArPh: "اسم المجموعة (عربي)",
++    pickOne: "اختيار واحد",
++    pickAny: "اختيار متعدد",
++    requiredCheckTitle: "يجب على العميل اختيار خيار واحد من هذه المجموعة",
++    requiredWord: "إلزامي",
++    removeGroup: "حذف المجموعة",
++    addOption: "+ إضافة خيار",
++
++    addCategory: "+ إضافة فئة",
++    confirmDeleteCategory: "حذف الفئة «{name}»؟ يجب ألا تحتوي على أي أطباق.",
++    toastCategoryDeleted: "تم حذف الفئة.",
++    errCouldNotDeleteCategory: "تعذّر حذف الفئة.",
++    editCategoryTitle: "تعديل الفئة",
++    addCategoryTitle: "إضافة فئة",
++    toastCategoryAdded: "تمت إضافة الفئة.",
++    toastCategoryUpdated: "تم تحديث الفئة.",
++    errCouldNotSaveCategory: "تعذّر حفظ الفئة.",
++
++    brandingHint: "الألوان واللغة/المظهر الافتراضي وعناصر الهوية الأخرى مُحددة في قالب الكود ولا يمكن تعديلها هنا.",
++    logoLabel: "الشعار",
++    coverImageLabel: "صورة الغلاف (الصفحة الرئيسية)",
++    whatsappLabel: "رقم واتساب (أرقام فقط، مع رمز الدولة أولاً)",
++    phoneDisplayedLabel: "الهاتف (المعروض)",
++    phoneLinkLabel: "رابط الهاتف (tel:)",
++    googleMapsLabel: "رابط خرائط Google",
++    googleReviewLabel: "رابط تقييم Google",
++    webhookLabel: "رابط الويب هوك (اختياري — نقطة بيع / Zapier / تكامل مخصص)",
++    webhookHint: "يتم إرسال كل طلب جديد وتغيير في الحالة إلى هذا الرابط بصيغة JSON. اتركه فارغًا للتعطيل.",
++    openingHoursLegend: "ساعات العمل",
++    addressLegend: "العنوان",
++    socialLinksLegend: "روابط التواصل الاجتماعي",
++    frenchLabel: "الفرنسية",
++    englishLabel: "الإنجليزية",
++    arabicLabel: "العربية",
++    instagramUrlLabel: "رابط انستغرام",
++    facebookUrlLabel: "رابط فيسبوك",
++    tiktokUrlLabel: "رابط تيك توك",
++    saveRestaurantInfo: "حفظ معلومات المطعم",
++    toastRestaurantInfoSaved: "تم حفظ معلومات المطعم.",
++    errCouldNotSaveRestaurantInfo: "تعذّر حفظ معلومات المطعم.",
++    errCouldNotLoadRestaurantInfo: "تعذّر تحميل معلومات المطعم.",
++    errCouldNotLoadData: "تعذّر تحميل البيانات.",
++
++    exportCsv: "تصدير CSV",
++    presetToday: "اليوم",
++    presetWeek: "هذا الأسبوع",
++    presetMonth: "هذا الشهر",
++    presetCustom: "فترة مخصصة",
++    ariaDateRange: "الفترة الزمنية",
++    ariaCustomStart: "بداية الفترة المخصصة",
++    ariaCustomEnd: "نهاية الفترة المخصصة",
++    ariaStatusFilter: "التصفية حسب حالة الطلب",
++    applyBtn: "تطبيق",
++    allStatuses: "كل الحالات",
++    statusPendingOpt: "قيد الانتظار",
++    statusCompletedOpt: "مكتمل",
++    statusCancelledOpt: "ملغى",
++    dineInNote: "الطلب من داخل المطعم هو النوع الوحيد المدعوم حاليًا في هذه القائمة، لذا لا يوجد بعد فلتر حسب نوع الطلب.",
++    revenueWord: "الإيرادات",
++    chartRevenueOverTime: "الإيرادات عبر الزمن",
++    chartOrdersOverTime: "الطلبات عبر الزمن",
++    chartBestSelling: "المنتجات الأكثر مبيعًا",
++    chartTopCategories: "أفضل الفئات",
++    chartBusiestHours: "أكثر الساعات ازدحامًا",
++    chartStatusDistribution: "توزيع حالات الطلبات",
++    kpiTotalOrders: "إجمالي الطلبات",
++    kpiTotalRevenue: "إجمالي الإيرادات",
++    kpiAvgOrderValue: "متوسط قيمة الطلب",
++    noChangeVsPrevious: "لا تغيير مقارنة بالفترة السابقة",
++    newVsPrevious: "جديد مقارنة بالفترة السابقة",
++    vsPreviousPeriod: "مقارنة بالفترة السابقة",
++    pickBothDates: "اختر تاريخ البداية والنهاية.",
++    startBeforeEnd: "يجب أن يسبق تاريخ البداية تاريخ النهاية.",
++    noRevenuePeriod: "لا إيرادات في هذه الفترة.",
++    noOrdersPeriod: "لا طلبات في هذه الفترة.",
++    noItemsSoldPeriod: "لم يُباع أي صنف في هذه الفترة.",
++    noSalesPeriod: "لا مبيعات في هذه الفترة.",
++    soldSuffix: "بيع {n}",
++    errCouldNotLoadStats: "تعذّر تحميل الإحصائيات."
++  }
++};
++
++function t(key, vars) {
++  let str = (adminTranslations[state.lang] && adminTranslations[state.lang][key]) || adminTranslations.en[key] || key;
++  if (vars) {
++    Object.keys(vars).forEach((k) => { str = str.replace(`{${k}}`, vars[k]); });
++  }
++  return str;
++}
++
++function orderStatusLabel(status) { return t(`status_${status}`); }
++
++function applyTranslations() {
++  document.querySelectorAll("[data-i18n]").forEach((el) => {
++    el.textContent = t(el.getAttribute("data-i18n"));
++  });
++  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
++    el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
++  });
++  document.querySelectorAll("[data-i18n-aria]").forEach((el) => {
++    el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria")));
++  });
++  document.title = `Ember Table — ${t("adminTitleSuffix")}`;
++}
++
++function loadLangPref() {
++  try {
++    const raw = localStorage.getItem(ADMIN_LANG_KEY);
++    return ["fr", "en", "ar"].includes(raw) ? raw : "en"; // default EN — opt-in, doesn't change behavior for existing staff
++  } catch (e) {
++    return "en";
++  }
++}
++function saveLangPref(lang) {
++  try { localStorage.setItem(ADMIN_LANG_KEY, lang); } catch (e) { /* ignore */ }
++}
++
++function updateLangSwitcherUI() {
++  document.querySelectorAll("[data-admin-lang]").forEach((btn) => {
++    btn.classList.toggle("is-active", btn.dataset.adminLang === state.lang);
++  });
++}
++
++// Re-renders whatever's currently visible so already-fetched data (orders,
++// menu items, stats) reflows in the new language without a full reload.
++function rerenderCurrentView() {
++  if (state.user) {
++    renderAssistanceBanner();
++    renderMenuItems();
++    renderCategories();
++    if (state.view === "orders") renderOrders();
++    if (state.view === "stats") loadStats();
++  }
++}
++
++function setLanguage(lang) {
++  if (!["fr", "en", "ar"].includes(lang)) return;
++  state.lang = lang;
++  document.documentElement.setAttribute("lang", lang);
++  document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
++  saveLangPref(lang);
++  applyTranslations();
++  updateLangSwitcherUI();
++  rerenderCurrentView();
++}
++
++document.body.addEventListener("click", (e) => {
++  const langBtn = e.target.closest("[data-admin-lang]");
++  if (langBtn) setLanguage(langBtn.dataset.adminLang);
++});
++
+ // ---------------------------------------------------------------- API
+ async function api(method, path, body) {
+   const opts = { method, credentials: "include", headers: {} };
+@@ -91,6 +752,15 @@ const toastEl = document.getElementById("adminToast");
+ const soundToggle = document.getElementById("soundToggle");
+ const autoPrintToggle = document.getElementById("autoPrintToggle");
+ 
++// Language is applied as early as possible (before checkSession()'s first
++// render) so the login screen itself shows in the staff member's saved
++// language, not a flash of English.
++state.lang = loadLangPref();
++document.documentElement.setAttribute("lang", state.lang);
++document.documentElement.setAttribute("dir", state.lang === "ar" ? "rtl" : "ltr");
++applyTranslations();
++updateLangSwitcherUI();
++
+ // ---------------------------------------------------------------- Toast
+ let toastTimer = null;
+ function showToast(message, isError) {
+@@ -243,9 +913,7 @@ loginForm.addEventListener("submit", async (e) => {
+     loginForm.reset();
+     showApp();
+   } catch (err) {
+-    loginError.textContent = err.status === 429
+-      ? `Too many attempts. Try again in a bit.`
+-      : "Incorrect username or password.";
++    loginError.textContent = err.status === 429 ? t("errLocked") : t("errInvalidCreds");
+     loginError.hidden = false;
+   }
+ });
+@@ -286,18 +954,14 @@ adminNav.addEventListener("click", (e) => {
+ 
+ // ---------------------------------------------------------------- Orders
+ const ORDER_STAGE_ORDER = ["received", "confirmed", "preparing", "ready", "completed"];
+-const ORDER_STATUS_LABELS = {
+-  received: "Received", confirmed: "Confirmed", preparing: "Preparing", ready: "Ready",
+-  completed: "Completed", cancelled: "Cancelled", rejected: "Rejected"
+-};
+ const ORDER_PENDING_STATUSES = new Set(["received", "confirmed", "preparing", "ready"]);
+ const ORDER_TERMINAL_STATUSES = new Set(["completed", "cancelled", "rejected"]);
+ 
+ function formatOrderTime(isoDatetime) {
+   const d = new Date(isoDatetime);
+   const diffMin = Math.floor((Date.now() - d.getTime()) / 60000);
+-  if (diffMin < 1) return "just now";
+-  if (diffMin < 60) return `${diffMin}m ago`;
++  if (diffMin < 1) return t("justNow");
++  if (diffMin < 60) return t("minAgo", { n: diffMin });
+   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+ }
+ 
+@@ -311,7 +975,7 @@ async function loadOrders(silent) {
+       if (state.lastSeenOrderId !== null && newestId > state.lastSeenOrderId) {
+         newOnes = orders.filter((o) => o.id > state.lastSeenOrderId);
+         newOrdersDetected = true;
+-        showToast(newOnes.length === 1 ? "New order received." : `${newOnes.length} new orders received.`);
++        showToast(newOnes.length === 1 ? t("toastNewOrder") : t("toastNewOrders", { count: newOnes.length }));
+ 
+         const unchimed = newOnes.filter((o) => !chimedOrderIds.has(o.id));
+         if (unchimed.length) {
+@@ -328,7 +992,7 @@ async function loadOrders(silent) {
+     if (newOrdersDetected) bumpOrdersBadge();
+     if (state.view === "orders") renderOrders();
+   } catch (err) {
+-    if (!silent) showToast(err.message || "Could not load orders.", true);
++    if (!silent) showToast(err.message || t("errCouldNotLoadOrders"), true);
+   }
+ }
+ 
+@@ -411,8 +1075,8 @@ function renderAssistanceBanner() {
+   assistanceBanner.hidden = false;
+   assistanceBanner.innerHTML = state.assistanceCalls.map((c) => `
+     <div class="assistance-call-row">
+-      <span class="assistance-call-text">🔔 Table ${escapeHtml(c.table)} needs assistance</span>
+-      <button type="button" class="btn btn-primary btn-small" data-ack="${c.id}">Acknowledge</button>
++      <span class="assistance-call-text">${escapeHtml(t("assistanceNeedsHelp", { table: c.table }))}</span>
++      <button type="button" class="btn btn-primary btn-small" data-ack="${c.id}">${escapeHtml(t("acknowledge"))}</button>
+     </div>
+   `).join("");
+ }
+@@ -426,7 +1090,7 @@ assistanceBanner.addEventListener("click", async (e) => {
+     renderAssistanceBanner();
+   } catch (err) {
+     btn.disabled = false;
+-    showToast(err.message || "Could not acknowledge.", true);
++    showToast(err.message || t("errCouldNotAcknowledge"), true);
+   }
+ });
+ 
+@@ -437,14 +1101,14 @@ function miniTrackerHtml(order) {
+     // rather than guessing how far the order got. Use "View history" (per-order
+     // GET /admin/orders/:id/history) if that detail is ever needed.
+     return `<div class="order-mini-tracker is-stopped">
+-      ${ORDER_STAGE_ORDER.map((s) => `<span class="mini-step is-future" title="${ORDER_STATUS_LABELS[s]}"></span>`).join("")}
++      ${ORDER_STAGE_ORDER.map((s) => `<span class="mini-step is-future" title="${escapeAttr(orderStatusLabel(s))}"></span>`).join("")}
+     </div>`;
+   }
+   const currentIndex = ORDER_STAGE_ORDER.indexOf(order.status);
+   return `<div class="order-mini-tracker">
+     ${ORDER_STAGE_ORDER.map((s, i) => {
+       const cls = order.status === "completed" || i < currentIndex ? "is-done" : i === currentIndex ? "is-active" : "is-future";
+-      return `<span class="mini-step ${cls}" title="${ORDER_STATUS_LABELS[s]}"></span>`;
++      return `<span class="mini-step ${cls}" title="${escapeAttr(orderStatusLabel(s))}"></span>`;
+     }).join("")}
+   </div>`;
+ }
+@@ -460,14 +1124,14 @@ function renderOrders() {
+     let actionsHtml = "";
+     if (!isTerminal) {
+       const rejectOrCancel = order.status === "received"
+-        ? `<button type="button" class="btn btn-danger btn-small" data-order-action="rejected" data-id="${order.id}">Reject</button>`
+-        : `<button type="button" class="btn btn-danger btn-small" data-order-action="cancelled" data-id="${order.id}">Cancel</button>`;
++        ? `<button type="button" class="btn btn-danger btn-small" data-order-action="rejected" data-id="${order.id}">${escapeHtml(t("reject"))}</button>`
++        : `<button type="button" class="btn btn-danger btn-small" data-order-action="cancelled" data-id="${order.id}">${escapeHtml(t("cancel"))}</button>`;
+       actionsHtml = `
+         <div class="order-note-row">
+-          <input type="text" class="order-note-input" placeholder="Optional note for this update…" data-note-for="${order.id}" maxlength="500">
++          <input type="text" class="order-note-input" placeholder="${escapeAttr(t("notePlaceholder"))}" data-note-for="${order.id}" maxlength="500">
+         </div>
+         <div class="order-actions">
+-          ${nextStage ? `<button type="button" class="btn btn-primary btn-small" data-order-action="${nextStage}" data-id="${order.id}">Mark as ${ORDER_STATUS_LABELS[nextStage]} →</button>` : ""}
++          ${nextStage ? `<button type="button" class="btn btn-primary btn-small" data-order-action="${nextStage}" data-id="${order.id}">${escapeHtml(t("markAsStatus", { status: orderStatusLabel(nextStage) }))}</button>` : ""}
+           ${rejectOrCancel}
+         </div>
+       `;
+@@ -477,16 +1141,16 @@ function renderOrders() {
+       <div class="order-card status-${order.status}${isNew ? " is-new" : ""}" data-id="${order.id}">
+         <div class="order-card-head">
+           <span class="order-ref">${escapeHtml(order.ref)}</span>
+-          ${isNew ? '<span class="order-new-pill">New</span>' : ""}
+-          <span class="order-table">Table ${escapeHtml(order.table)}</span>
+-          <span class="order-status-badge status-${order.status}">${ORDER_STATUS_LABELS[order.status]}</span>
+-          <span class="order-time">${formatOrderTime(order.createdAt)}</span>
++          ${isNew ? `<span class="order-new-pill">${escapeHtml(t("newBadge"))}</span>` : ""}
++          <span class="order-table">${escapeHtml(t("tableWord"))} ${escapeHtml(order.table)}</span>
++          <span class="order-status-badge status-${order.status}">${escapeHtml(orderStatusLabel(order.status))}</span>
++          <span class="order-time">${escapeHtml(formatOrderTime(order.createdAt))}</span>
+         </div>
+         <ul class="order-items">${itemsHtml}</ul>
+         ${miniTrackerHtml(order)}
+         <div class="order-card-foot">
+           <span class="order-total">${order.total.toFixed(2)} MAD</span>
+-          <button type="button" class="btn btn-ghost btn-small" data-print-id="${order.id}">🖨️ Print ticket</button>
++          <button type="button" class="btn btn-ghost btn-small" data-print-id="${order.id}">${escapeHtml(t("printTicketBtn"))}</button>
+         </div>
+         ${actionsHtml}
+       </div>
+@@ -505,7 +1169,7 @@ function printOrderTicket(id) {
+     <li>
+       <div>${it.qty}× ${escapeHtml(it.name)}</div>
+       ${formatItemOptions(it) ? `<div class="ticket-item-options">${escapeHtml(formatItemOptions(it))}</div>` : ""}
+-      ${it.note ? `<div class="ticket-item-note">Note: ${escapeHtml(it.note)}</div>` : ""}
++      ${it.note ? `<div class="ticket-item-note">${escapeHtml(t("ticketNote", { note: it.note }))}</div>` : ""}
+     </li>
+   `).join("");
+   document.getElementById("printTicket").innerHTML = `
+@@ -514,14 +1178,14 @@ function printOrderTicket(id) {
+       <div class="ticket-ref">${escapeHtml(order.ref)}</div>
+     </div>
+     <div class="ticket-meta">
+-      <div><span>Table</span><span>${escapeHtml(order.table)}</span></div>
+-      <div><span>Time</span><span>${new Date(order.createdAt).toLocaleString()}</span></div>
++      <div><span>${escapeHtml(t("tableWord"))}</span><span>${escapeHtml(order.table)}</span></div>
++      <div><span>${escapeHtml(t("ticketTime"))}</span><span>${new Date(order.createdAt).toLocaleString()}</span></div>
+     </div>
+     <div class="ticket-divider"></div>
+     <ul class="ticket-items">${itemsHtml}</ul>
+     <div class="ticket-divider"></div>
+-    <div class="ticket-total"><span>Total</span><span>${order.total.toFixed(2)} MAD</span></div>
+-    <div class="ticket-footer">Printed ${new Date().toLocaleString()}</div>
++    <div class="ticket-total"><span>${escapeHtml(t("ticketTotal"))}</span><span>${order.total.toFixed(2)} MAD</span></div>
++    <div class="ticket-footer">${escapeHtml(t("ticketPrinted", { datetime: new Date().toLocaleString() }))}</div>
+   `;
+   window.print();
+ }
+@@ -546,10 +1210,10 @@ ordersContainer.addEventListener("click", async (e) => {
+       if (idx !== -1) state.orders[idx] = updated;
+       updateOrdersBadge();
+       renderOrders();
+-      showToast(`Order marked ${ORDER_STATUS_LABELS[status].toLowerCase()}.`);
++      showToast(t("toastOrderMarked", { status: orderStatusLabel(status) }));
+     } catch (err) {
+       btn.disabled = false;
+-      showToast(err.message || "Could not update order.", true);
++      showToast(err.message || t("errCouldNotUpdateOrder"), true);
+     }
+     return;
+   }
+@@ -561,18 +1225,18 @@ ordersContainer.addEventListener("click", async (e) => {
+ 
+ // ---------------------------------------------------------------- Change password
+ function openChangePasswordModal(forced) {
+-  openModal("Change password", `
++  openModal(t("changePasswordBtn"), `
+     <form id="changePasswordForm">
+-      ${forced ? '<p class="form-hint">This account was created with a temporary password. Please set a new one to continue.</p>' : ""}
++      ${forced ? `<p class="form-hint">${escapeHtml(t("forcedPasswordHint"))}</p>` : ""}
+       <div class="form-grid">
+-        <label class="field"><span>Current password</span><input type="password" id="cpCurrent" required></label>
+-        <label class="field"><span>New password (min. 8 characters)</span><input type="password" id="cpNew" minlength="8" required></label>
+-        <label class="field"><span>Confirm new password</span><input type="password" id="cpConfirm" minlength="8" required></label>
++        <label class="field"><span>${escapeHtml(t("currentPassword"))}</span><input type="password" id="cpCurrent" required></label>
++        <label class="field"><span>${escapeHtml(t("newPasswordMin8"))}</span><input type="password" id="cpNew" minlength="8" required></label>
++        <label class="field"><span>${escapeHtml(t("confirmNewPassword"))}</span><input type="password" id="cpConfirm" minlength="8" required></label>
+       </div>
+       <p class="form-error" id="cpError" hidden></p>
+       <div class="modal-actions">
+-        ${forced ? "" : '<button type="button" class="btn btn-ghost" id="cpCancel">Cancel</button>'}
+-        <button type="submit" class="btn btn-primary">Save new password</button>
++        ${forced ? "" : `<button type="button" class="btn btn-ghost" id="cpCancel">${escapeHtml(t("cancel"))}</button>`}
++        <button type="submit" class="btn btn-primary">${escapeHtml(t("saveNewPassword"))}</button>
+       </div>
+     </form>
+   `);
+@@ -587,7 +1251,7 @@ function openChangePasswordModal(forced) {
+     const newPassword = document.getElementById("cpNew").value;
+     const confirm = document.getElementById("cpConfirm").value;
+     if (newPassword !== confirm) {
+-      cpError.textContent = "New passwords don't match.";
++      cpError.textContent = t("errPasswordsDontMatch");
+       cpError.hidden = false;
+       return;
+     }
+@@ -595,9 +1259,9 @@ function openChangePasswordModal(forced) {
+       await api("POST", "/auth/change-password", { currentPassword, newPassword });
+       state.user.mustChangePassword = false;
+       closeModal();
+-      showToast("Password updated.");
++      showToast(t("toastPasswordUpdated"));
+     } catch (err) {
+-      cpError.textContent = err.message || "Could not change password.";
++      cpError.textContent = err.message || t("errCouldNotChangePassword");
+       cpError.hidden = false;
+     }
+   });
+@@ -616,7 +1280,7 @@ async function loadAll() {
+     renderCategories();
+     renderMenuItems();
+   } catch (err) {
+-    showToast(err.message || "Could not load data.", true);
++    showToast(err.message || t("errCouldNotLoadData"), true);
+   }
+ }
+ 
+@@ -631,6 +1295,7 @@ function itemThumbHtml(item) {
+ }
+ 
+ function renderMenuItems() {
++  if (!state.user) return;
+   const isOwner = state.user.role === "owner";
+   menuItemsContainer.innerHTML = "";
+   state.categories.forEach((cat) => {
+@@ -643,10 +1308,10 @@ function renderMenuItems() {
+       const row = document.createElement("div");
+       row.className = "item-row" + (isOwner ? "" : " simple");
+       const badges = [];
+-      if (item.featured) badges.push('<span class="tag tag-featured">Featured</span>');
+-      if (item.recommended) badges.push('<span class="tag tag-recommended">Recommended</span>');
+-      if (item.discountPrice != null) badges.push('<span class="tag tag-offer">Offer</span>');
+-      if (!item.available) badges.push('<span class="tag tag-unavailable">Sold out</span>');
++      if (item.featured) badges.push(`<span class="tag tag-featured">${escapeHtml(t("tagFeatured"))}</span>`);
++      if (item.recommended) badges.push(`<span class="tag tag-recommended">${escapeHtml(t("tagRecommended"))}</span>`);
++      if (item.discountPrice != null) badges.push(`<span class="tag tag-offer">${escapeHtml(t("tagOffer"))}</span>`);
++      if (!item.available) badges.push(`<span class="tag tag-unavailable">${escapeHtml(t("tagSoldOut"))}</span>`);
+ 
+       const priceHtml = item.discountPrice != null
+         ? `<span class="old">${item.price.toFixed(2)}</span>${item.discountPrice.toFixed(2)} MAD`
+@@ -661,15 +1326,15 @@ function renderMenuItems() {
+         </div>
+         <div class="item-price">${priceHtml}</div>
+         <div class="item-actions">
+-          <label class="switch" title="Available">
++          <label class="switch" title="${escapeAttr(t("availableTitle"))}">
+             <input type="checkbox" data-toggle-id="${item.id}" ${item.available ? "checked" : ""}>
+             <span class="track"></span>
+           </label>
+           ${isOwner ? `
+-            <button type="button" class="btn btn-ghost btn-icon" data-move="up" data-id="${item.id}" title="Move up">↑</button>
+-            <button type="button" class="btn btn-ghost btn-icon" data-move="down" data-id="${item.id}" title="Move down">↓</button>
+-            <button type="button" class="btn btn-ghost btn-small" data-edit-item="${item.id}">Edit</button>
+-            <button type="button" class="btn btn-danger btn-small" data-delete-item="${item.id}">Delete</button>
++            <button type="button" class="btn btn-ghost btn-icon" data-move="up" data-id="${item.id}" title="${escapeAttr(t("moveUpTitle"))}">↑</button>
++            <button type="button" class="btn btn-ghost btn-icon" data-move="down" data-id="${item.id}" title="${escapeAttr(t("moveDownTitle"))}">↓</button>
++            <button type="button" class="btn btn-ghost btn-small" data-edit-item="${item.id}">${escapeHtml(t("edit"))}</button>
++            <button type="button" class="btn btn-danger btn-small" data-delete-item="${item.id}">${escapeHtml(t("deleteWord"))}</button>
+           ` : ""}
+         </div>
+       `;
+@@ -688,10 +1353,10 @@ menuItemsContainer.addEventListener("change", async (e) => {
+     const item = state.items.find((i) => i.id === id);
+     if (item) item.available = updated.available;
+     renderMenuItems();
+-    showToast(updated.available ? "Marked available." : "Marked sold out.");
++    showToast(updated.available ? t("toastMarkedAvailable") : t("toastMarkedSoldOut"));
+   } catch (err) {
+     toggle.checked = !toggle.checked;
+-    showToast(err.message || "Could not update availability.", true);
++    showToast(err.message || t("errCouldNotUpdateAvailability"), true);
+   }
+ });
+ 
+@@ -707,7 +1372,7 @@ menuItemsContainer.addEventListener("click", async (e) => {
+       state.items = await api("PUT", `/admin/menu-items/${moveBtn.dataset.id}/move`, { direction: moveBtn.dataset.move });
+       renderMenuItems();
+     } catch (err) {
+-      showToast(err.message || "Could not reorder.", true);
++      showToast(err.message || t("errCouldNotReorder"), true);
+     }
+   }
+ });
+@@ -715,14 +1380,14 @@ menuItemsContainer.addEventListener("click", async (e) => {
+ async function deleteDish(id) {
+   const item = state.items.find((i) => i.id === id);
+   if (!item) return;
+-  if (!confirm(`Delete "${item.name.en}"? This cannot be undone.`)) return;
++  if (!confirm(t("confirmDeleteDish", { name: item.name.en }))) return;
+   try {
+     await api("DELETE", `/admin/menu-items/${id}`);
+     state.items = state.items.filter((i) => i.id !== id);
+     renderMenuItems();
+-    showToast("Dish deleted.");
++    showToast(t("toastDishDeleted"));
+   } catch (err) {
+-    showToast(err.message || "Could not delete dish.", true);
++    showToast(err.message || t("errCouldNotDeleteDish"), true);
+   }
+ }
+ 
+@@ -731,11 +1396,11 @@ addDishBtn.addEventListener("click", () => openDishModal(null));
+ function optionRowHtml(o) {
+   return `
+     <div class="option-row" data-option-row>
+-      <input type="text" data-opt="nameEn" placeholder="Option (English) e.g. Large" value="${escapeAttr(o?.name?.en || "")}">
+-      <input type="text" data-opt="nameFr" placeholder="Option (French)" value="${escapeAttr(o?.name?.fr || "")}">
+-      <input type="text" data-opt="nameAr" dir="rtl" placeholder="Option (Arabic)" value="${escapeAttr(o?.name?.ar || "")}">
+-      <input type="number" step="0.01" data-opt="priceDelta" placeholder="+MAD" value="${o && o.priceDelta ? o.priceDelta : ""}">
+-      <button type="button" class="btn btn-ghost btn-small" data-remove-option title="Remove option">×</button>
++      <input type="text" data-opt="nameEn" placeholder="${escapeAttr(t("optNameEnPh"))}" value="${escapeAttr(o?.name?.en || "")}">
++      <input type="text" data-opt="nameFr" placeholder="${escapeAttr(t("optNameFrPh"))}" value="${escapeAttr(o?.name?.fr || "")}">
++      <input type="text" data-opt="nameAr" dir="rtl" placeholder="${escapeAttr(t("optNameArPh"))}" value="${escapeAttr(o?.name?.ar || "")}">
++      <input type="number" step="0.01" data-opt="priceDelta" placeholder="${escapeAttr(t("optPriceDeltaPh"))}" value="${o && o.priceDelta ? o.priceDelta : ""}">
++      <button type="button" class="btn btn-ghost btn-small" data-remove-option title="${escapeAttr(t("removeOptionTitle"))}">×</button>
+     </div>
+   `;
+ }
+@@ -744,18 +1409,18 @@ function optionGroupBlockHtml(g) {
+   return `
+     <div class="option-group-block" data-group-block>
+       <div class="option-group-head">
+-        <input type="text" data-og="nameEn" placeholder="Group name (English) e.g. Size" value="${escapeAttr(g?.name?.en || "")}">
+-        <input type="text" data-og="nameFr" placeholder="Group name (French)" value="${escapeAttr(g?.name?.fr || "")}">
+-        <input type="text" data-og="nameAr" dir="rtl" placeholder="Group name (Arabic)" value="${escapeAttr(g?.name?.ar || "")}">
++        <input type="text" data-og="nameEn" placeholder="${escapeAttr(t("grpNameEnPh"))}" value="${escapeAttr(g?.name?.en || "")}">
++        <input type="text" data-og="nameFr" placeholder="${escapeAttr(t("grpNameFrPh"))}" value="${escapeAttr(g?.name?.fr || "")}">
++        <input type="text" data-og="nameAr" dir="rtl" placeholder="${escapeAttr(t("grpNameArPh"))}" value="${escapeAttr(g?.name?.ar || "")}">
+         <select data-og="type">
+-          <option value="single" ${!g || g.type === "single" ? "selected" : ""}>Pick one</option>
+-          <option value="multi" ${g && g.type === "multi" ? "selected" : ""}>Pick any</option>
++          <option value="single" ${!g || g.type === "single" ? "selected" : ""}>${escapeHtml(t("pickOne"))}</option>
++          <option value="multi" ${g && g.type === "multi" ? "selected" : ""}>${escapeHtml(t("pickAny"))}</option>
+         </select>
+-        <label class="field-check" title="Customer must pick one option in this group"><input type="checkbox" data-og="required" ${g?.required ? "checked" : ""}> Required</label>
+-        <button type="button" class="btn btn-danger btn-small" data-remove-group>Remove group</button>
++        <label class="field-check" title="${escapeAttr(t("requiredCheckTitle"))}"><input type="checkbox" data-og="required" ${g?.required ? "checked" : ""}> ${escapeHtml(t("requiredWord"))}</label>
++        <button type="button" class="btn btn-danger btn-small" data-remove-group>${escapeHtml(t("removeGroup"))}</button>
+       </div>
+       <div class="option-list" data-option-list>${options}</div>
+-      <button type="button" class="btn btn-ghost btn-small" data-add-option>+ Add option</button>
++      <button type="button" class="btn btn-ghost btn-small" data-add-option>${escapeHtml(t("addOption"))}</button>
+     </div>
+   `;
+ }
+@@ -766,54 +1431,54 @@ function openDishModal(item) {
+     .map((c) => `<option value="${c.id}" ${item && item.categoryId === c.id ? "selected" : ""}>${escapeHtml(categoryLabel(c))}</option>`)
+     .join("");
+ 
+-  openModal(isEdit ? "Edit dish" : "Add dish", `
++  openModal(isEdit ? t("editDishTitle") : t("addDishTitle"), `
+     <form id="dishForm">
+       <div class="form-grid">
+-        <label class="field"><span>Category</span>
++        <label class="field"><span>${escapeHtml(t("categoryLabel"))}</span>
+           <select id="dCategory" required>${categoryOptions}</select>
+         </label>
+ 
+         <div class="field-row">
+-          <label class="field"><span>Name (English)</span><input type="text" id="dNameEn" value="${escapeAttr(item?.name.en || "")}" required></label>
+-          <label class="field"><span>Name (French)</span><input type="text" id="dNameFr" value="${escapeAttr(item?.name.fr || "")}" required></label>
+-          <label class="field"><span>Name (Arabic)</span><input type="text" id="dNameAr" dir="rtl" value="${escapeAttr(item?.name.ar || "")}" required></label>
++          <label class="field"><span>${escapeHtml(t("nameEnglish"))}</span><input type="text" id="dNameEn" value="${escapeAttr(item?.name.en || "")}" required></label>
++          <label class="field"><span>${escapeHtml(t("nameFrench"))}</span><input type="text" id="dNameFr" value="${escapeAttr(item?.name.fr || "")}" required></label>
++          <label class="field"><span>${escapeHtml(t("nameArabic"))}</span><input type="text" id="dNameAr" dir="rtl" value="${escapeAttr(item?.name.ar || "")}" required></label>
+         </div>
+ 
+         <div class="field-row">
+-          <label class="field"><span>Description (English)</span><textarea id="dDescEn">${escapeHtml(item?.description.en || "")}</textarea></label>
+-          <label class="field"><span>Description (French)</span><textarea id="dDescFr">${escapeHtml(item?.description.fr || "")}</textarea></label>
+-          <label class="field"><span>Description (Arabic)</span><textarea id="dDescAr" dir="rtl">${escapeHtml(item?.description.ar || "")}</textarea></label>
++          <label class="field"><span>${escapeHtml(t("descEnglish"))}</span><textarea id="dDescEn">${escapeHtml(item?.description.en || "")}</textarea></label>
++          <label class="field"><span>${escapeHtml(t("descFrench"))}</span><textarea id="dDescFr">${escapeHtml(item?.description.fr || "")}</textarea></label>
++          <label class="field"><span>${escapeHtml(t("descArabic"))}</span><textarea id="dDescAr" dir="rtl">${escapeHtml(item?.description.ar || "")}</textarea></label>
+         </div>
+ 
+         <div class="field-row">
+-          <label class="field"><span>Price (MAD)</span><input type="number" step="0.01" min="0" id="dPrice" value="${item ? item.price : ""}" required></label>
+-          <label class="field"><span>Discount price (optional)</span><input type="number" step="0.01" min="0" id="dDiscountPrice" value="${item && item.discountPrice != null ? item.discountPrice : ""}"></label>
++          <label class="field"><span>${escapeHtml(t("priceMad"))}</span><input type="number" step="0.01" min="0" id="dPrice" value="${item ? item.price : ""}" required></label>
++          <label class="field"><span>${escapeHtml(t("discountPriceOptional"))}</span><input type="number" step="0.01" min="0" id="dDiscountPrice" value="${item && item.discountPrice != null ? item.discountPrice : ""}"></label>
+         </div>
+ 
+-        <label class="field"><span>Photo</span>
++        <label class="field"><span>${escapeHtml(t("photoLabel"))}</span>
+           <div class="image-upload-row">
+-            <div class="image-preview" id="dImagePreview">${item && item.image ? `<img src="${escapeAttr(item.image)}" alt="">` : "No photo"}</div>
++            <div class="image-preview" id="dImagePreview">${item && item.image ? `<img src="${escapeAttr(item.image)}" alt="">` : escapeHtml(t("noPhoto"))}</div>
+             <input type="file" id="dImageFile" accept="image/png,image/jpeg,image/webp,image/gif">
+           </div>
+           <input type="hidden" id="dImagePath" value="${escapeAttr(item?.image || "")}">
+         </label>
+ 
+         <fieldset class="field-group">
+-          <legend>Dish options (size, sauces, extras — optional)</legend>
++          <legend>${escapeHtml(t("dishOptionsLegend"))}</legend>
+           <div id="dOptionGroupsContainer">${(item?.optionGroups || []).map(optionGroupBlockHtml).join("")}</div>
+-          <button type="button" class="btn btn-ghost btn-small" id="addOptionGroupBtn">+ Add option group</button>
++          <button type="button" class="btn btn-ghost btn-small" id="addOptionGroupBtn">${escapeHtml(t("addOptionGroup"))}</button>
+         </fieldset>
+ 
+         <div class="field-row">
+-          <label class="field field-check"><input type="checkbox" id="dFeatured" ${item?.featured ? "checked" : ""}> Featured</label>
+-          <label class="field field-check"><input type="checkbox" id="dRecommended" ${item?.recommended ? "checked" : ""}> Recommended</label>
+-          <label class="field field-check"><input type="checkbox" id="dAvailable" ${!item || item.available ? "checked" : ""}> Available</label>
++          <label class="field field-check"><input type="checkbox" id="dFeatured" ${item?.featured ? "checked" : ""}> ${escapeHtml(t("tagFeatured"))}</label>
++          <label class="field field-check"><input type="checkbox" id="dRecommended" ${item?.recommended ? "checked" : ""}> ${escapeHtml(t("tagRecommended"))}</label>
++          <label class="field field-check"><input type="checkbox" id="dAvailable" ${!item || item.available ? "checked" : ""}> ${escapeHtml(t("availableTitle"))}</label>
+         </div>
+       </div>
+       <p class="form-error" id="dishError" hidden></p>
+       <div class="modal-actions">
+-        <button type="button" class="btn btn-ghost" id="dishCancel">Cancel</button>
+-        <button type="submit" class="btn btn-primary">${isEdit ? "Save changes" : "Add dish"}</button>
++        <button type="button" class="btn btn-ghost" id="dishCancel">${escapeHtml(t("cancel"))}</button>
++        <button type="submit" class="btn btn-primary">${isEdit ? escapeHtml(t("saveChanges")) : escapeHtml(t("addDishTitle"))}</button>
+       </div>
+     </form>
+   `);
+@@ -824,14 +1489,14 @@ function openDishModal(item) {
+     const file = e.target.files[0];
+     if (!file) return;
+     const preview = document.getElementById("dImagePreview");
+-    preview.textContent = "Uploading…";
++    preview.textContent = t("uploadingText");
+     try {
+       const path = await uploadImage(file);
+       document.getElementById("dImagePath").value = path;
+       preview.innerHTML = `<img src="${escapeAttr(path)}" alt="">`;
+     } catch (err) {
+-      preview.textContent = "Upload failed";
+-      showToast(err.message || "Image upload failed.", true);
++      preview.textContent = t("uploadFailedText");
++      showToast(err.message || t("errImageUploadFailed"), true);
+     }
+   });
+ 
+@@ -897,9 +1562,9 @@ function openDishModal(item) {
+       }
+       closeModal();
+       renderMenuItems();
+-      showToast(isEdit ? "Dish updated." : "Dish added.");
++      showToast(isEdit ? t("toastDishUpdated") : t("toastDishAdded"));
+     } catch (err) {
+-      dishError.textContent = err.message || "Could not save dish.";
++      dishError.textContent = err.message || t("errCouldNotSaveDish");
+       dishError.hidden = false;
+     }
+   });
+@@ -907,6 +1572,7 @@ function openDishModal(item) {
+ 
+ // ---------------------------------------------------------------- Render: categories
+ function renderCategories() {
++  if (!state.user) return;
+   categoriesContainer.innerHTML = "";
+   state.categories.forEach((cat) => {
+     const row = document.createElement("div");
+@@ -914,10 +1580,10 @@ function renderCategories() {
+     row.innerHTML = `
+       <div class="cat-labels"><b>${escapeHtml(cat.label.en)}</b> <span>FR: ${escapeHtml(cat.label.fr)}</span> <span dir="rtl">AR: ${escapeHtml(cat.label.ar)}</span></div>
+       <div class="item-actions">
+-        <button type="button" class="btn btn-ghost btn-icon" data-cat-move="up" data-id="${cat.id}" title="Move up">↑</button>
+-        <button type="button" class="btn btn-ghost btn-icon" data-cat-move="down" data-id="${cat.id}" title="Move down">↓</button>
+-        <button type="button" class="btn btn-ghost btn-small" data-cat-edit="${cat.id}">Edit</button>
+-        <button type="button" class="btn btn-danger btn-small" data-cat-delete="${cat.id}">Delete</button>
++        <button type="button" class="btn btn-ghost btn-icon" data-cat-move="up" data-id="${cat.id}" title="${escapeAttr(t("moveUpTitle"))}">↑</button>
++        <button type="button" class="btn btn-ghost btn-icon" data-cat-move="down" data-id="${cat.id}" title="${escapeAttr(t("moveDownTitle"))}">↓</button>
++        <button type="button" class="btn btn-ghost btn-small" data-cat-edit="${cat.id}">${escapeHtml(t("edit"))}</button>
++        <button type="button" class="btn btn-danger btn-small" data-cat-delete="${cat.id}">${escapeHtml(t("deleteWord"))}</button>
+       </div>
+     `;
+     categoriesContainer.appendChild(row);
+@@ -936,21 +1602,21 @@ categoriesContainer.addEventListener("click", async (e) => {
+       renderCategories();
+       renderMenuItems();
+     } catch (err) {
+-      showToast(err.message || "Could not reorder.", true);
++      showToast(err.message || t("errCouldNotReorder"), true);
+     }
+     return;
+   }
+   if (delBtn) {
+     const cat = state.categories.find((c) => c.id === delBtn.dataset.catDelete);
+     if (!cat) return;
+-    if (!confirm(`Delete category "${cat.label.en}"? It must have no dishes in it.`)) return;
++    if (!confirm(t("confirmDeleteCategory", { name: cat.label.en }))) return;
+     try {
+       await api("DELETE", `/admin/categories/${cat.id}`);
+       state.categories = state.categories.filter((c) => c.id !== cat.id);
+       renderCategories();
+-      showToast("Category deleted.");
++      showToast(t("toastCategoryDeleted"));
+     } catch (err) {
+-      showToast(err.message || "Could not delete category.", true);
++      showToast(err.message || t("errCouldNotDeleteCategory"), true);
+     }
+   }
+ });
+@@ -959,17 +1625,17 @@ addCategoryBtn.addEventListener("click", () => openCategoryModal(null));
+ 
+ function openCategoryModal(cat) {
+   const isEdit = !!cat;
+-  openModal(isEdit ? "Edit category" : "Add category", `
++  openModal(isEdit ? t("editCategoryTitle") : t("addCategoryTitle"), `
+     <form id="categoryForm">
+       <div class="form-grid">
+-        <label class="field"><span>Name (English)</span><input type="text" id="cNameEn" value="${escapeAttr(cat?.label.en || "")}" required></label>
+-        <label class="field"><span>Name (French)</span><input type="text" id="cNameFr" value="${escapeAttr(cat?.label.fr || "")}" required></label>
+-        <label class="field"><span>Name (Arabic)</span><input type="text" id="cNameAr" dir="rtl" value="${escapeAttr(cat?.label.ar || "")}" required></label>
++        <label class="field"><span>${escapeHtml(t("nameEnglish"))}</span><input type="text" id="cNameEn" value="${escapeAttr(cat?.label.en || "")}" required></label>
++        <label class="field"><span>${escapeHtml(t("nameFrench"))}</span><input type="text" id="cNameFr" value="${escapeAttr(cat?.label.fr || "")}" required></label>
++        <label class="field"><span>${escapeHtml(t("nameArabic"))}</span><input type="text" id="cNameAr" dir="rtl" value="${escapeAttr(cat?.label.ar || "")}" required></label>
+       </div>
+       <p class="form-error" id="categoryError" hidden></p>
+       <div class="modal-actions">
+-        <button type="button" class="btn btn-ghost" id="categoryCancel">Cancel</button>
+-        <button type="submit" class="btn btn-primary">${isEdit ? "Save changes" : "Add category"}</button>
++        <button type="button" class="btn btn-ghost" id="categoryCancel">${escapeHtml(t("cancel"))}</button>
++        <button type="submit" class="btn btn-primary">${isEdit ? escapeHtml(t("saveChanges")) : escapeHtml(t("addCategoryTitle"))}</button>
+       </div>
+     </form>
+   `);
+@@ -995,9 +1661,9 @@ function openCategoryModal(cat) {
+       closeModal();
+       renderCategories();
+       renderMenuItems();
+-      showToast(isEdit ? "Category updated." : "Category added.");
++      showToast(isEdit ? t("toastCategoryUpdated") : t("toastCategoryAdded"));
+     } catch (err) {
+-      categoryError.textContent = err.message || "Could not save category.";
++      categoryError.textContent = err.message || t("errCouldNotSaveCategory");
+       categoryError.hidden = false;
+     }
+   });
+@@ -1009,10 +1675,10 @@ async function loadRestaurantInfo() {
+     const info = await api("GET", "/admin/restaurant-info");
+     document.getElementById("infoLogoImagePath").value = info.logoImage || "";
+     document.getElementById("infoLogoImagePreview").innerHTML = info.logoImage
+-      ? `<img src="${escapeAttr(info.logoImage)}" alt="">` : "No photo";
++      ? `<img src="${escapeAttr(info.logoImage)}" alt="">` : escapeHtml(t("noPhoto"));
+     document.getElementById("infoHeroImagePath").value = info.heroImage || "";
+     document.getElementById("infoHeroImagePreview").innerHTML = info.heroImage
+-      ? `<img src="${escapeAttr(info.heroImage)}" alt="">` : "No photo";
++      ? `<img src="${escapeAttr(info.heroImage)}" alt="">` : escapeHtml(t("noPhoto"));
+     document.getElementById("infoWhatsapp").value = info.whatsappNumber;
+     document.getElementById("infoPhone").value = info.phone;
+     document.getElementById("infoPhoneHref").value = info.phoneHref;
+@@ -1029,7 +1695,7 @@ async function loadRestaurantInfo() {
+     document.getElementById("infoFacebook").value = info.social.facebook;
+     document.getElementById("infoTiktok").value = info.social.tiktok;
+   } catch (err) {
+-    showToast(err.message || "Could not load restaurant info.", true);
++    showToast(err.message || t("errCouldNotLoadRestaurantInfo"), true);
+   }
+ }
+ 
+@@ -1037,14 +1703,14 @@ document.getElementById("infoLogoImageFile").addEventListener("change", async (e
+   const file = e.target.files[0];
+   if (!file) return;
+   const preview = document.getElementById("infoLogoImagePreview");
+-  preview.textContent = "Uploading…";
++  preview.textContent = t("uploadingText");
+   try {
+     const path = await uploadImage(file);
+     document.getElementById("infoLogoImagePath").value = path;
+     preview.innerHTML = `<img src="${escapeAttr(path)}" alt="">`;
+   } catch (err) {
+-    preview.textContent = "Upload failed";
+-    showToast(err.message || "Image upload failed.", true);
++    preview.textContent = t("uploadFailedText");
++    showToast(err.message || t("errImageUploadFailed"), true);
+   }
+ });
+ 
+@@ -1052,14 +1718,14 @@ document.getElementById("infoHeroImageFile").addEventListener("change", async (e
+   const file = e.target.files[0];
+   if (!file) return;
+   const preview = document.getElementById("infoHeroImagePreview");
+-  preview.textContent = "Uploading…";
++  preview.textContent = t("uploadingText");
+   try {
+     const path = await uploadImage(file);
+     document.getElementById("infoHeroImagePath").value = path;
+     preview.innerHTML = `<img src="${escapeAttr(path)}" alt="">`;
+   } catch (err) {
+-    preview.textContent = "Upload failed";
+-    showToast(err.message || "Image upload failed.", true);
++    preview.textContent = t("uploadFailedText");
++    showToast(err.message || t("errImageUploadFailed"), true);
+   }
+ });
+ 
+@@ -1093,9 +1759,9 @@ restaurantInfoForm.addEventListener("submit", async (e) => {
+   };
+   try {
+     await api("PUT", "/admin/restaurant-info", payload);
+-    showToast("Restaurant info saved.");
++    showToast(t("toastRestaurantInfoSaved"));
+   } catch (err) {
+-    infoError.textContent = err.message || "Could not save restaurant info.";
++    infoError.textContent = err.message || t("errCouldNotSaveRestaurantInfo");
+     infoError.hidden = false;
+   }
+ });
+@@ -1124,10 +1790,10 @@ function computeStatsRange() {
+ }
+ 
+ function formatDelta(current, previous) {
+-  if (previous === 0) return current === 0 ? { text: "No change vs previous period", cls: "flat" } : { text: "New vs previous period", cls: "up" };
++  if (previous === 0) return current === 0 ? { text: t("noChangeVsPrevious"), cls: "flat" } : { text: t("newVsPrevious"), cls: "up" };
+   const pct = Math.round(((current - previous) / previous) * 100);
+-  if (pct === 0) return { text: "No change vs previous period", cls: "flat" };
+-  return { text: `${pct > 0 ? "+" : ""}${pct}% vs previous period`, cls: pct > 0 ? "up" : "down" };
++  if (pct === 0) return { text: t("noChangeVsPrevious"), cls: "flat" };
++  return { text: `${pct > 0 ? "+" : ""}${pct}% ${t("vsPreviousPeriod")}`, cls: pct > 0 ? "up" : "down" };
+ }
+ 
+ function kpiTileHtml(label, value, delta, accentClass) {
+@@ -1142,21 +1808,21 @@ function kpiTileHtml(label, value, delta, accentClass) {
+ 
+ function renderTodayCard(today) {
+   statsTodayCard.innerHTML = `
+-    <span class="pulse-label">Today</span>
+-    <div class="pulse-stat"><b>${escapeHtml(String(today.totalOrders))}</b><span>Orders</span></div>
+-    <div class="pulse-stat"><b>${escapeHtml(formatMAD(today.revenue))}</b><span>Revenue</span></div>
+-    <div class="pulse-stat"><b>${escapeHtml(String(today.pending))}</b><span>Pending</span></div>
++    <span class="pulse-label">${escapeHtml(t("presetToday"))}</span>
++    <div class="pulse-stat"><b>${escapeHtml(String(today.totalOrders))}</b><span>${escapeHtml(t("navOrders"))}</span></div>
++    <div class="pulse-stat"><b>${escapeHtml(formatMAD(today.revenue))}</b><span>${escapeHtml(t("revenueWord"))}</span></div>
++    <div class="pulse-stat"><b>${escapeHtml(String(today.pending))}</b><span>${escapeHtml(t("statusPendingOpt"))}</span></div>
+   `;
+ }
+ 
+ function renderKpiGrid(summary, previous) {
+   statsKpiGrid.innerHTML = [
+-    kpiTileHtml("Total orders", summary.totalOrders, formatDelta(summary.totalOrders, previous.totalOrders), "accent-money"),
+-    kpiTileHtml("Total revenue", formatMAD(summary.revenue), formatDelta(summary.revenue, previous.revenue), "accent-money"),
+-    kpiTileHtml("Average order value", formatMAD(summary.avgOrderValue), formatDelta(summary.avgOrderValue, previous.avgOrderValue), "accent-money"),
+-    kpiTileHtml("Pending", summary.pending, null, "accent-pending"),
+-    kpiTileHtml("Completed", summary.completed, null, "accent-completed"),
+-    kpiTileHtml("Cancelled", summary.cancelled, null, "accent-cancelled")
++    kpiTileHtml(t("kpiTotalOrders"), summary.totalOrders, formatDelta(summary.totalOrders, previous.totalOrders), "accent-money"),
++    kpiTileHtml(t("kpiTotalRevenue"), formatMAD(summary.revenue), formatDelta(summary.revenue, previous.revenue), "accent-money"),
++    kpiTileHtml(t("kpiAvgOrderValue"), formatMAD(summary.avgOrderValue), formatDelta(summary.avgOrderValue, previous.avgOrderValue), "accent-money"),
++    kpiTileHtml(t("statusPendingOpt"), summary.pending, null, "accent-pending"),
++    kpiTileHtml(t("statusCompletedOpt"), summary.completed, null, "accent-completed"),
++    kpiTileHtml(t("statusCancelledOpt"), summary.cancelled, null, "accent-cancelled")
+   ].join("");
+ }
+ 
+@@ -1220,34 +1886,34 @@ async function loadStats() {
+ 
+     renderColumnChart(document.getElementById("chartRevenueTime"), data.revenueOverTime, {
+       valueKey: "revenue", labelKey: "label", color: "var(--primary-hover)", formatValue: formatMAD,
+-      emptyText: "No revenue in this period."
++      emptyText: t("noRevenuePeriod")
+     });
+     renderColumnChart(document.getElementById("chartOrdersTime"), data.revenueOverTime, {
+       valueKey: "orders", labelKey: "label", color: "var(--primary-hover)", formatValue: formatCount,
+-      emptyText: "No orders in this period."
++      emptyText: t("noOrdersPeriod")
+     });
+     renderBarList(document.getElementById("chartBestSellers"), data.bestSellers, {
+-      valueKey: "qty", labelKey: "name", color: "var(--primary-hover)", formatValue: (n) => `${n} sold`,
+-      emptyText: "No items sold in this period."
++      valueKey: "qty", labelKey: "name", color: "var(--primary-hover)", formatValue: (n) => t("soldSuffix", { n }),
++      emptyText: t("noItemsSoldPeriod")
+     });
+     renderBarList(document.getElementById("chartTopCategories"), data.topCategories, {
+       valueKey: "revenue", labelKey: "name", color: "var(--primary-hover)", formatValue: formatMAD,
+-      emptyText: "No sales in this period."
++      emptyText: t("noSalesPeriod")
+     });
+     renderColumnChart(document.getElementById("chartBusiestHours"), data.busiestHours, {
+       valueKey: "orders", labelKey: "label", color: "var(--primary-hover)", formatValue: formatCount,
+-      emptyText: "No orders in this period."
++      emptyText: t("noOrdersPeriod")
+     });
+     const statusColors = {
+       received: "var(--primary-hover)", confirmed: "var(--primary-hover)", preparing: "var(--primary-hover)", ready: "var(--primary-hover)",
+       completed: "var(--success)", cancelled: "var(--danger)", rejected: "var(--danger)"
+     };
+-    renderBarList(document.getElementById("chartStatusDistribution"), data.statusDistribution, {
++    renderBarList(document.getElementById("chartStatusDistribution"), data.statusDistribution.map((s) => ({ ...s, label: orderStatusLabel(s.status) })), {
+       valueKey: "count", labelKey: "label", color: (row) => statusColors[row.status] || "var(--primary-hover)",
+-      formatValue: formatCount, emptyText: "No orders in this period."
++      formatValue: formatCount, emptyText: t("noOrdersPeriod")
+     });
+   } catch (err) {
+-    showToast(err.message || "Could not load statistics.", true);
++    showToast(err.message || t("errCouldNotLoadStats"), true);
+   }
+ }
+ 
+@@ -1271,11 +1937,11 @@ statsCustomApply.addEventListener("click", () => {
+   state.statsCustomStart = statsCustomStart.value;
+   state.statsCustomEnd = statsCustomEnd.value;
+   if (!state.statsCustomStart || !state.statsCustomEnd) {
+-    showToast("Pick both a start and end date.", true);
++    showToast(t("pickBothDates"), true);
+     return;
+   }
+   if (state.statsCustomStart > state.statsCustomEnd) {
+-    showToast("Start date must be before end date.", true);
++    showToast(t("startBeforeEnd"), true);
+     return;
+   }
+   loadStats();
+diff --git a/public/admin/index.html b/public/admin/index.html
+index 5be268b..5abb697 100644
+--- a/public/admin/index.html
++++ b/public/admin/index.html
+@@ -6,26 +6,31 @@
+ <title>Ember Table — Admin</title>
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
++<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+ <link rel="stylesheet" href="/admin/admin.css">
+ </head>
+ <body>
+ 
+ <div id="loginScreen" class="login-screen">
+   <form id="loginForm" class="login-card" novalidate>
++    <div class="lang-switcher" id="loginLangSwitcher" role="group" aria-label="Language">
++      <button type="button" data-admin-lang="fr" class="lang-btn">FR</button>
++      <button type="button" data-admin-lang="en" class="lang-btn is-active">EN</button>
++      <button type="button" data-admin-lang="ar" class="lang-btn">AR</button>
++    </div>
+     <div class="login-logo">ET</div>
+-    <h1>Ember Table CMS</h1>
+-    <p class="login-sub">Sign in to manage the menu and restaurant info.</p>
++    <h1 data-i18n="loginTitle">Ember Table CMS</h1>
++    <p class="login-sub" data-i18n="loginSubtitle">Sign in to manage the menu and restaurant info.</p>
+     <label class="field">
+-      <span>Username</span>
++      <span data-i18n="fieldUsername">Username</span>
+       <input type="text" id="loginUsername" autocomplete="username" required>
+     </label>
+     <label class="field">
+-      <span>Password</span>
++      <span data-i18n="fieldPassword">Password</span>
+       <input type="password" id="loginPassword" autocomplete="current-password" required>
+     </label>
+     <p class="form-error" id="loginError" hidden></p>
+-    <button type="submit" class="btn btn-primary btn-block">Sign in</button>
++    <button type="submit" class="btn btn-primary btn-block" data-i18n="signIn">Sign in</button>
+   </form>
+ </div>
+ 
+@@ -34,28 +39,33 @@
+     <div class="admin-brand"><span class="logo-mark" aria-hidden="true">ET</span> Ember Table CMS</div>
+     <nav class="admin-nav" id="adminNav">
+       <button type="button" data-view="orders" class="nav-btn is-active">
+-        Orders <span class="nav-badge" id="ordersBadge" hidden>0</span><span class="new-order-dot" id="newOrderDot" hidden></span>
++        <span data-i18n="navOrders">Orders</span> <span class="nav-badge" id="ordersBadge" hidden>0</span><span class="new-order-dot" id="newOrderDot" hidden></span>
+       </button>
+-      <button type="button" data-view="stats" class="nav-btn">Dashboard</button>
+-      <button type="button" data-view="menu" class="nav-btn">Menu items</button>
+-      <button type="button" data-view="categories" class="nav-btn">Categories</button>
+-      <button type="button" data-view="info" class="nav-btn">Restaurant info</button>
++      <button type="button" data-view="stats" class="nav-btn"><span data-i18n="navDashboard">Dashboard</span></button>
++      <button type="button" data-view="menu" class="nav-btn"><span data-i18n="navMenuItems">Menu items</span></button>
++      <button type="button" data-view="categories" class="nav-btn"><span data-i18n="navCategories">Categories</span></button>
++      <button type="button" data-view="info" class="nav-btn"><span data-i18n="navRestaurantInfo">Restaurant info</span></button>
+     </nav>
+     <div class="admin-user">
+-      <span class="sound-toggle-label">Sound</span>
+-      <label class="switch" title="Toggle sound alerts for new orders">
++      <div class="lang-switcher" id="adminLangSwitcher" role="group" aria-label="Language">
++        <button type="button" data-admin-lang="fr" class="lang-btn">FR</button>
++        <button type="button" data-admin-lang="en" class="lang-btn is-active">EN</button>
++        <button type="button" data-admin-lang="ar" class="lang-btn">AR</button>
++      </div>
++      <span class="sound-toggle-label" data-i18n="soundLabel">Sound</span>
++      <label class="switch" data-i18n-title="soundToggleTitle" title="Toggle sound alerts for new orders">
+         <input type="checkbox" id="soundToggle" checked>
+         <span class="track"></span>
+       </label>
+-      <span class="sound-toggle-label">Auto-print</span>
+-      <label class="switch" title="Automatically open the print dialog for a kitchen ticket when a new order arrives">
++      <span class="sound-toggle-label" data-i18n="autoPrintLabel">Auto-print</span>
++      <label class="switch" data-i18n-title="autoPrintToggleTitle" title="Automatically open the print dialog for a kitchen ticket when a new order arrives">
+         <input type="checkbox" id="autoPrintToggle">
+         <span class="track"></span>
+       </label>
+       <span class="user-pill" id="userLabel"></span>
+-      <a href="/" target="_blank" rel="noopener" class="btn btn-ghost" id="viewSiteBtn" title="Opens the customer-facing site in a new tab">View site ↗</a>
+-      <button type="button" class="btn btn-ghost" id="changePasswordBtn">Change password</button>
+-      <button type="button" class="btn btn-ghost" id="logoutBtn">Log out</button>
++      <a href="/" target="_blank" rel="noopener" class="btn btn-ghost" id="viewSiteBtn" data-i18n="viewSite" data-i18n-title="viewSiteTitle" title="Opens the customer-facing site in a new tab">View site ↗</a>
++      <button type="button" class="btn btn-ghost" id="changePasswordBtn" data-i18n="changePasswordBtn">Change password</button>
++      <button type="button" class="btn btn-ghost" id="logoutBtn" data-i18n="logOut">Log out</button>
+     </div>
+   </header>
+ 
+@@ -64,47 +74,47 @@
+   <main class="admin-main">
+     <section id="view-orders" class="admin-view">
+       <div class="view-toolbar">
+-        <h2>Orders</h2>
++        <h2 data-i18n="navOrders">Orders</h2>
+         <label class="field-check auto-refresh-toggle">
+-          <input type="checkbox" id="ordersAutoRefresh" checked> Auto-refresh
++          <input type="checkbox" id="ordersAutoRefresh" checked> <span data-i18n="autoRefresh">Auto-refresh</span>
+         </label>
+       </div>
+-      <p class="form-hint" id="ordersEmptyHint" hidden>No orders yet. New orders placed from the menu will show up here automatically.</p>
++      <p class="form-hint" id="ordersEmptyHint" data-i18n="ordersEmptyHint" hidden>No orders yet. New orders placed from the menu will show up here automatically.</p>
+       <div id="ordersContainer" class="orders-list"></div>
+     </section>
+ 
+     <section id="view-stats" class="admin-view" hidden>
+       <div class="view-toolbar">
+-        <h2>Dashboard</h2>
++        <h2 data-i18n="navDashboard">Dashboard</h2>
+         <div class="view-toolbar-actions">
+           <label class="field-check auto-refresh-toggle">
+-            <input type="checkbox" id="statsAutoRefresh" checked> Auto-refresh
++            <input type="checkbox" id="statsAutoRefresh" checked> <span data-i18n="autoRefresh">Auto-refresh</span>
+           </label>
+-          <button type="button" class="btn btn-ghost" id="statsExportBtn">Export CSV</button>
++          <button type="button" class="btn btn-ghost" id="statsExportBtn" data-i18n="exportCsv">Export CSV</button>
+         </div>
+       </div>
+ 
+       <div class="stats-filter-bar">
+-        <div class="filter-presets" id="statsPresets" role="group" aria-label="Date range">
+-          <button type="button" class="btn btn-ghost btn-small is-active" data-preset="today">Today</button>
+-          <button type="button" class="btn btn-ghost btn-small" data-preset="week">This week</button>
+-          <button type="button" class="btn btn-ghost btn-small" data-preset="month">This month</button>
+-          <button type="button" class="btn btn-ghost btn-small" data-preset="custom">Custom range</button>
++        <div class="filter-presets" id="statsPresets" role="group" data-i18n-aria="ariaDateRange" aria-label="Date range">
++          <button type="button" class="btn btn-ghost btn-small is-active" data-preset="today" data-i18n="presetToday">Today</button>
++          <button type="button" class="btn btn-ghost btn-small" data-preset="week" data-i18n="presetWeek">This week</button>
++          <button type="button" class="btn btn-ghost btn-small" data-preset="month" data-i18n="presetMonth">This month</button>
++          <button type="button" class="btn btn-ghost btn-small" data-preset="custom" data-i18n="presetCustom">Custom range</button>
+         </div>
+         <div class="filter-custom-range" id="statsCustomRange" hidden>
+-          <input type="date" id="statsCustomStart" aria-label="Custom range start">
++          <input type="date" id="statsCustomStart" data-i18n-aria="ariaCustomStart" aria-label="Custom range start">
+           <span aria-hidden="true">–</span>
+-          <input type="date" id="statsCustomEnd" aria-label="Custom range end">
+-          <button type="button" class="btn btn-primary btn-small" id="statsCustomApply">Apply</button>
++          <input type="date" id="statsCustomEnd" data-i18n-aria="ariaCustomEnd" aria-label="Custom range end">
++          <button type="button" class="btn btn-primary btn-small" id="statsCustomApply" data-i18n="applyBtn">Apply</button>
+         </div>
+-        <select id="statsStatusFilter" class="filter-select" aria-label="Filter by order status">
+-          <option value="">All statuses</option>
+-          <option value="new">Pending</option>
+-          <option value="completed">Completed</option>
+-          <option value="cancelled">Cancelled</option>
++        <select id="statsStatusFilter" class="filter-select" data-i18n-aria="ariaStatusFilter" aria-label="Filter by order status">
++          <option value="" data-i18n="allStatuses">All statuses</option>
++          <option value="new" data-i18n="statusPendingOpt">Pending</option>
++          <option value="completed" data-i18n="statusCompletedOpt">Completed</option>
++          <option value="cancelled" data-i18n="statusCancelledOpt">Cancelled</option>
+         </select>
+       </div>
+-      <p class="form-hint stats-note">Dine-in is the only order type this menu supports, so there's no order-type filter to show yet.</p>
++      <p class="form-hint stats-note" data-i18n="dineInNote">Dine-in is the only order type this menu supports, so there's no order-type filter to show yet.</p>
+ 
+       <div class="today-pulse" id="statsTodayCard" aria-live="polite"></div>
+ 
+@@ -112,27 +122,27 @@
+ 
+       <div class="charts-grid">
+         <div class="chart-card">
+-          <h3>Revenue over time</h3>
++          <h3 data-i18n="chartRevenueOverTime">Revenue over time</h3>
+           <div class="chart-body" id="chartRevenueTime"></div>
+         </div>
+         <div class="chart-card">
+-          <h3>Orders over time</h3>
++          <h3 data-i18n="chartOrdersOverTime">Orders over time</h3>
+           <div class="chart-body" id="chartOrdersTime"></div>
+         </div>
+         <div class="chart-card">
+-          <h3>Best-selling products</h3>
++          <h3 data-i18n="chartBestSelling">Best-selling products</h3>
+           <div class="chart-body" id="chartBestSellers"></div>
+         </div>
+         <div class="chart-card">
+-          <h3>Top categories</h3>
++          <h3 data-i18n="chartTopCategories">Top categories</h3>
+           <div class="chart-body" id="chartTopCategories"></div>
+         </div>
+         <div class="chart-card">
+-          <h3>Busiest hours</h3>
++          <h3 data-i18n="chartBusiestHours">Busiest hours</h3>
+           <div class="chart-body" id="chartBusiestHours"></div>
+         </div>
+         <div class="chart-card">
+-          <h3>Order status distribution</h3>
++          <h3 data-i18n="chartStatusDistribution">Order status distribution</h3>
+           <div class="chart-body" id="chartStatusDistribution"></div>
+         </div>
+       </div>
+@@ -140,92 +150,92 @@
+ 
+     <section id="view-menu" class="admin-view" hidden>
+       <div class="view-toolbar">
+-        <h2>Menu items</h2>
+-        <button type="button" class="btn btn-primary" id="addDishBtn">+ Add dish</button>
++        <h2 data-i18n="navMenuItems">Menu items</h2>
++        <button type="button" class="btn btn-primary" id="addDishBtn" data-i18n="addDish">+ Add dish</button>
+       </div>
+       <div id="menuItemsContainer" class="items-by-category"></div>
+     </section>
+ 
+     <section id="view-categories" class="admin-view" hidden>
+       <div class="view-toolbar">
+-        <h2>Categories</h2>
+-        <button type="button" class="btn btn-primary" id="addCategoryBtn">+ Add category</button>
++        <h2 data-i18n="navCategories">Categories</h2>
++        <button type="button" class="btn btn-primary" id="addCategoryBtn" data-i18n="addCategory">+ Add category</button>
+       </div>
+       <div id="categoriesContainer" class="category-list"></div>
+     </section>
+ 
+     <section id="view-info" class="admin-view" hidden>
+       <div class="view-toolbar">
+-        <h2>Restaurant info</h2>
++        <h2 data-i18n="navRestaurantInfo">Restaurant info</h2>
+       </div>
+       <form id="restaurantInfoForm" class="panel-card form-grid">
+-        <p class="form-hint">Colors, default language/theme, and other branding are set in the code template and aren't editable here.</p>
++        <p class="form-hint" data-i18n="brandingHint">Colors, default language/theme, and other branding are set in the code template and aren't editable here.</p>
+ 
+-        <label class="field"><span>Logo</span>
++        <label class="field"><span data-i18n="logoLabel">Logo</span>
+           <div class="image-upload-row">
+-            <div class="image-preview" id="infoLogoImagePreview">No photo</div>
++            <div class="image-preview" id="infoLogoImagePreview" data-i18n="noPhoto">No photo</div>
+             <input type="file" id="infoLogoImageFile" accept="image/png,image/jpeg,image/webp,image/gif">
+           </div>
+           <input type="hidden" id="infoLogoImagePath" value="">
+         </label>
+ 
+-        <label class="field"><span>Cover image (homepage)</span>
++        <label class="field"><span data-i18n="coverImageLabel">Cover image (homepage)</span>
+           <div class="image-upload-row">
+-            <div class="image-preview" id="infoHeroImagePreview">No photo</div>
++            <div class="image-preview" id="infoHeroImagePreview" data-i18n="noPhoto">No photo</div>
+             <input type="file" id="infoHeroImageFile" accept="image/png,image/jpeg,image/webp,image/gif">
+           </div>
+           <input type="hidden" id="infoHeroImagePath" value="">
+         </label>
+ 
+         <label class="field">
+-          <span>WhatsApp number (digits only, country code first)</span>
++          <span data-i18n="whatsappLabel">WhatsApp number (digits only, country code first)</span>
+           <input type="text" id="infoWhatsapp" placeholder="212600000000" required>
+         </label>
+         <label class="field">
+-          <span>Phone (displayed)</span>
++          <span data-i18n="phoneDisplayedLabel">Phone (displayed)</span>
+           <input type="text" id="infoPhone" placeholder="+212 6 00 00 00 00">
+         </label>
+         <label class="field">
+-          <span>Phone link (tel:)</span>
++          <span data-i18n="phoneLinkLabel">Phone link (tel:)</span>
+           <input type="text" id="infoPhoneHref" placeholder="tel:+212600000000">
+         </label>
+         <label class="field">
+-          <span>Google Maps URL</span>
++          <span data-i18n="googleMapsLabel">Google Maps URL</span>
+           <input type="text" id="infoGoogleMaps" placeholder="https://maps.app.goo.gl/...">
+         </label>
+         <label class="field">
+-          <span>Google Review URL</span>
++          <span data-i18n="googleReviewLabel">Google Review URL</span>
+           <input type="text" id="infoGoogleReview" placeholder="https://g.page/r/.../review">
+         </label>
+         <label class="field">
+-          <span>Webhook URL (optional — POS / Zapier / custom integration)</span>
++          <span data-i18n="webhookLabel">Webhook URL (optional — POS / Zapier / custom integration)</span>
+           <input type="text" id="infoWebhookUrl" placeholder="https://your-pos-or-zapier-endpoint.com/...">
+-          <p class="form-hint">Every new order and status change gets POSTed here as JSON. Leave blank to disable.</p>
++          <p class="form-hint" data-i18n="webhookHint">Every new order and status change gets POSTed here as JSON. Leave blank to disable.</p>
+         </label>
+ 
+         <fieldset class="field-group">
+-          <legend>Opening hours</legend>
+-          <label class="field"><span>French</span><input type="text" id="infoHoursFr"></label>
+-          <label class="field"><span>English</span><input type="text" id="infoHoursEn"></label>
+-          <label class="field"><span>Arabic</span><input type="text" id="infoHoursAr" dir="rtl"></label>
++          <legend data-i18n="openingHoursLegend">Opening hours</legend>
++          <label class="field"><span data-i18n="frenchLabel">French</span><input type="text" id="infoHoursFr"></label>
++          <label class="field"><span data-i18n="englishLabel">English</span><input type="text" id="infoHoursEn"></label>
++          <label class="field"><span data-i18n="arabicLabel">Arabic</span><input type="text" id="infoHoursAr" dir="rtl"></label>
+         </fieldset>
+ 
+         <fieldset class="field-group">
+-          <legend>Address</legend>
+-          <label class="field"><span>French</span><input type="text" id="infoAddressFr"></label>
+-          <label class="field"><span>English</span><input type="text" id="infoAddressEn"></label>
+-          <label class="field"><span>Arabic</span><input type="text" id="infoAddressAr" dir="rtl"></label>
++          <legend data-i18n="addressLegend">Address</legend>
++          <label class="field"><span data-i18n="frenchLabel">French</span><input type="text" id="infoAddressFr"></label>
++          <label class="field"><span data-i18n="englishLabel">English</span><input type="text" id="infoAddressEn"></label>
++          <label class="field"><span data-i18n="arabicLabel">Arabic</span><input type="text" id="infoAddressAr" dir="rtl"></label>
+         </fieldset>
+ 
+         <fieldset class="field-group">
+-          <legend>Social links</legend>
+-          <label class="field"><span>Instagram URL</span><input type="text" id="infoInstagram"></label>
+-          <label class="field"><span>Facebook URL</span><input type="text" id="infoFacebook"></label>
+-          <label class="field"><span>TikTok URL</span><input type="text" id="infoTiktok"></label>
++          <legend data-i18n="socialLinksLegend">Social links</legend>
++          <label class="field"><span data-i18n="instagramUrlLabel">Instagram URL</span><input type="text" id="infoInstagram"></label>
++          <label class="field"><span data-i18n="facebookUrlLabel">Facebook URL</span><input type="text" id="infoFacebook"></label>
++          <label class="field"><span data-i18n="tiktokUrlLabel">TikTok URL</span><input type="text" id="infoTiktok"></label>
+         </fieldset>
+ 
+         <p class="form-error" id="infoError" hidden></p>
+-        <button type="submit" class="btn btn-primary">Save restaurant info</button>
++        <button type="submit" class="btn btn-primary" data-i18n="saveRestaurantInfo">Save restaurant info</button>
+       </form>
+     </section>
+   </main>
+-- 
+2.43.0
+

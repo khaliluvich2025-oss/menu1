@@ -23,18 +23,24 @@ html, body { margin: 0; padding: 0; }
   --radius-md:12px;
   --shadow-1: 0 1px 2px rgba(20,18,14,.06);
   --shadow-2: 0 12px 28px rgba(20,18,14,.14);
+  --font-latin: 'Inter', system-ui, "Segoe UI", Arial, sans-serif;
+  --font-arabic: 'Noto Kufi Arabic', Tahoma, Arial, sans-serif;
+  --font-body: var(--font-latin);
 }
+/* Swapped to the Arabic-optimized stack whenever admin.js sets dir="rtl"
+   (Arabic UI selected) — same mechanism as the public site's i18n. */
+html[dir="rtl"]{ --font-body: var(--font-arabic); }
 
 body{
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', system-ui, "Segoe UI", Arial, sans-serif;
+  font-family: var(--font-body);
   line-height:1.4;
   min-height:100vh;
 }
-h1,h2,h3 { margin:0; }
-button { font-family:inherit; }
-input, select, textarea { font-family:inherit; font-size:.92rem; }
+h1,h2,h3 { margin:0; font-family:var(--font-body); }
+button { font-family:var(--font-body); }
+input, select, textarea { font-family:var(--font-body); font-size:.92rem; }
 
 :focus-visible{ outline:2px solid var(--ember); outline-offset:2px; }
 
@@ -149,6 +155,21 @@ input, select, textarea { font-family:inherit; font-size:.92rem; }
 .user-pill{ font-size:.78rem; color:rgba(255,255,255,.7); }
 .admin-user .btn-ghost{ color:#fff; border-color:rgba(255,255,255,.25); }
 .admin-user .btn-ghost:hover{ border-color:var(--ember); color:var(--ember); }
+
+/* ---------- LANGUAGE SWITCHER (FR / EN / AR) ---------- */
+.lang-switcher{ display:flex; gap:2px; background:rgba(255,255,255,.08); border-radius:var(--radius-sm); padding:2px; flex-shrink:0; }
+.lang-btn{
+  background:transparent; border:none; color:rgba(255,255,255,.65); font-weight:800; font-size:.72rem;
+  padding:5px 9px; border-radius:6px; cursor:pointer; letter-spacing:.02em;
+}
+.lang-btn:hover{ color:#fff; }
+.lang-btn.is-active{ background:var(--ember); color:var(--text-on-ember); }
+/* Login card has a light background — the header's dark-on-dark styling
+   above would be invisible there, so it gets its own light-surface variant. */
+.login-card .lang-switcher{ align-self:flex-end; background:var(--surface-alt); margin-bottom:-4px; }
+.login-card .lang-btn{ color:var(--text-muted); }
+.login-card .lang-btn:hover{ color:var(--text); }
+.login-card .lang-btn.is-active{ background:var(--primary); color:var(--text-on-ember); }
 
 .admin-main{ max-width:1100px; margin:0 auto; padding:28px 20px 60px; }
 .admin-view .view-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }

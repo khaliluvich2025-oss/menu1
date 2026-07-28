@@ -156,7 +156,8 @@ router.get("/admin/stats", requireOwner, async (req, res) => {
 });
 
 function csvEscape(value) {
-  const str = String(value ?? "");
+  let str = String(value ?? "");
+  if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`;
   return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 }
 
