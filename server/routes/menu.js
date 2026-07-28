@@ -168,8 +168,8 @@ router.get("/admin/menu-items", requireAuth, async (req, res) => {
 
 router.post("/admin/menu-items", requireOwner, async (req, res) => {
   const b = req.body || {};
-  if (!b.categoryId || !b.nameFr || !b.nameEn || !b.nameAr || b.price == null) {
-    return res.status(400).json({ error: "invalid_input", message: "Category, name (3 languages) and price are required." });
+if (typeof b.categoryId !== "string" || !b.categoryId || !b.nameFr || !b.nameEn || !b.nameAr || b.price == null) {
+  return res.status(400).json({ error: "invalid_input", message: "Category, name (3 languages) and price are required." });
   }
   const db = await ensureReady();
   const category = await db.collection("categories").findOne({ _id: b.categoryId });
