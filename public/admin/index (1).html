@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ember Table — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <form id="loginForm" class="login-card" novalidate>
+    <div class="lang-switcher" id="loginLangSwitcher" role="group" aria-label="Language">
+      <button type="button" data-admin-lang="fr" class="lang-btn">FR</button>
+      <button type="button" data-admin-lang="en" class="lang-btn is-active">EN</button>
+      <button type="button" data-admin-lang="ar" class="lang-btn">AR</button>
+    </div>
+    <div class="login-logo">ET</div>
+    <h1 data-i18n="loginTitle">Ember Table CMS</h1>
+    <p class="login-sub" data-i18n="loginSubtitle">Sign in to manage the menu and restaurant info.</p>
+    <label class="field">
+      <span data-i18n="fieldUsername">Username</span>
+      <input type="text" id="loginUsername" autocomplete="username" required>
+    </label>
+    <label class="field">
+      <span data-i18n="fieldPassword">Password</span>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+    </label>
+    <p class="form-error" id="loginError" hidden></p>
+    <button type="submit" class="btn btn-primary btn-block" data-i18n="signIn">Sign in</button>
+  </form>
+</div>
+
+<div id="appScreen" class="app-screen" hidden>
+  <header class="admin-header">
+    <div class="admin-brand"><span class="logo-mark" aria-hidden="true">ET</span> Ember Table CMS</div>
+    <nav class="admin-nav" id="adminNav">
+      <button type="button" data-view="orders" class="nav-btn is-active">
+        <span data-i18n="navOrders">Orders</span> <span class="nav-badge" id="ordersBadge" hidden>0</span><span class="new-order-dot" id="newOrderDot" hidden></span>
+      </button>
+      <button type="button" data-view="stats" class="nav-btn"><span data-i18n="navDashboard">Dashboard</span></button>
+      <button type="button" data-view="menu" class="nav-btn"><span data-i18n="navMenuItems">Menu items</span></button>
+      <button type="button" data-view="categories" class="nav-btn"><span data-i18n="navCategories">Categories</span></button>
+      <button type="button" data-view="info" class="nav-btn"><span data-i18n="navRestaurantInfo">Restaurant info</span></button>
+    </nav>
+    <div class="admin-user">
+      <div class="lang-switcher" id="adminLangSwitcher" role="group" aria-label="Language">
+        <button type="button" data-admin-lang="fr" class="lang-btn">FR</button>
+        <button type="button" data-admin-lang="en" class="lang-btn is-active">EN</button>
+        <button type="button" data-admin-lang="ar" class="lang-btn">AR</button>
+      </div>
+      <span class="sound-toggle-label" data-i18n="soundLabel">Sound</span>
+      <label class="switch" data-i18n-title="soundToggleTitle" title="Toggle sound alerts for new orders">
+        <input type="checkbox" id="soundToggle" checked>
+        <span class="track"></span>
+      </label>
+      <span class="sound-toggle-label" data-i18n="autoPrintLabel">Auto-print</span>
+      <label class="switch" data-i18n-title="autoPrintToggleTitle" title="Automatically open the print dialog for a kitchen ticket when a new order arrives">
+        <input type="checkbox" id="autoPrintToggle">
+        <span class="track"></span>
+      </label>
+      <span class="user-pill" id="userLabel"></span>
+      <a href="/" target="_blank" rel="noopener" class="btn btn-ghost" id="viewSiteBtn" data-i18n="viewSite" data-i18n-title="viewSiteTitle" title="Opens the customer-facing site in a new tab">View site ↗</a>
+      <button type="button" class="btn btn-ghost" id="changePasswordBtn" data-i18n="changePasswordBtn">Change password</button>
+      <button type="button" class="btn btn-ghost" id="logoutBtn" data-i18n="logOut">Log out</button>
+    </div>
+  </header>
+
+  <div class="assistance-banner" id="assistanceBanner" hidden></div>
+
+  <main class="admin-main">
+    <section id="view-orders" class="admin-view">
+      <div class="view-toolbar">
+        <h2 data-i18n="navOrders">Orders</h2>
+        <label class="field-check auto-refresh-toggle">
+          <input type="checkbox" id="ordersAutoRefresh" checked> <span data-i18n="autoRefresh">Auto-refresh</span>
+        </label>
+      </div>
+      <p class="form-hint" id="ordersEmptyHint" data-i18n="ordersEmptyHint" hidden>No orders yet. New orders placed from the menu will show up here automatically.</p>
+      <div id="ordersContainer" class="orders-list"></div>
+    </section>
+
+    <section id="view-stats" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2 data-i18n="navDashboard">Dashboard</h2>
+        <div class="view-toolbar-actions">
+          <label class="field-check auto-refresh-toggle">
+            <input type="checkbox" id="statsAutoRefresh" checked> <span data-i18n="autoRefresh">Auto-refresh</span>
+          </label>
+          <button type="button" class="btn btn-ghost" id="statsExportBtn" data-i18n="exportCsv">Export CSV</button>
+        </div>
+      </div>
+
+      <div class="stats-filter-bar">
+        <div class="filter-presets" id="statsPresets" role="group" data-i18n-aria="ariaDateRange" aria-label="Date range">
+          <button type="button" class="btn btn-ghost btn-small is-active" data-preset="today" data-i18n="presetToday">Today</button>
+          <button type="button" class="btn btn-ghost btn-small" data-preset="week" data-i18n="presetWeek">This week</button>
+          <button type="button" class="btn btn-ghost btn-small" data-preset="month" data-i18n="presetMonth">This month</button>
+          <button type="button" class="btn btn-ghost btn-small" data-preset="custom" data-i18n="presetCustom">Custom range</button>
+        </div>
+        <div class="filter-custom-range" id="statsCustomRange" hidden>
+          <input type="date" id="statsCustomStart" data-i18n-aria="ariaCustomStart" aria-label="Custom range start">
+          <span aria-hidden="true">–</span>
+          <input type="date" id="statsCustomEnd" data-i18n-aria="ariaCustomEnd" aria-label="Custom range end">
+          <button type="button" class="btn btn-primary btn-small" id="statsCustomApply" data-i18n="applyBtn">Apply</button>
+        </div>
+        <select id="statsStatusFilter" class="filter-select" data-i18n-aria="ariaStatusFilter" aria-label="Filter by order status">
+          <option value="" data-i18n="allStatuses">All statuses</option>
+          <option value="new" data-i18n="statusPendingOpt">Pending</option>
+          <option value="completed" data-i18n="statusCompletedOpt">Completed</option>
+          <option value="cancelled" data-i18n="statusCancelledOpt">Cancelled</option>
+        </select>
+      </div>
+      <p class="form-hint stats-note" data-i18n="dineInNote">Dine-in is the only order type this menu supports, so there's no order-type filter to show yet.</p>
+
+      <div class="today-pulse" id="statsTodayCard" aria-live="polite"></div>
+
+      <div class="kpi-grid" id="statsKpiGrid"></div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3 data-i18n="chartRevenueOverTime">Revenue over time</h3>
+          <div class="chart-body" id="chartRevenueTime"></div>
+        </div>
+        <div class="chart-card">
+          <h3 data-i18n="chartOrdersOverTime">Orders over time</h3>
+          <div class="chart-body" id="chartOrdersTime"></div>
+        </div>
+        <div class="chart-card">
+          <h3 data-i18n="chartBestSelling">Best-selling products</h3>
+          <div class="chart-body" id="chartBestSellers"></div>
+        </div>
+        <div class="chart-card">
+          <h3 data-i18n="chartTopCategories">Top categories</h3>
+          <div class="chart-body" id="chartTopCategories"></div>
+        </div>
+        <div class="chart-card">
+          <h3 data-i18n="chartBusiestHours">Busiest hours</h3>
+          <div class="chart-body" id="chartBusiestHours"></div>
+        </div>
+        <div class="chart-card">
+          <h3 data-i18n="chartStatusDistribution">Order status distribution</h3>
+          <div class="chart-body" id="chartStatusDistribution"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-menu" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2 data-i18n="navMenuItems">Menu items</h2>
+        <button type="button" class="btn btn-primary" id="addDishBtn" data-i18n="addDish">+ Add dish</button>
+      </div>
+      <div id="menuItemsContainer" class="items-by-category"></div>
+    </section>
+
+    <section id="view-categories" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2 data-i18n="navCategories">Categories</h2>
+        <button type="button" class="btn btn-primary" id="addCategoryBtn" data-i18n="addCategory">+ Add category</button>
+      </div>
+      <div id="categoriesContainer" class="category-list"></div>
+    </section>
+
+    <section id="view-info" class="admin-view" hidden>
+      <div class="view-toolbar">
+        <h2 data-i18n="navRestaurantInfo">Restaurant info</h2>
+      </div>
+      <form id="restaurantInfoForm" class="panel-card form-grid">
+        <p class="form-hint" data-i18n="brandingHint">Colors, default language/theme, and other branding are set in the code template and aren't editable here.</p>
+
+        <label class="field"><span data-i18n="logoLabel">Logo</span>
+          <div class="image-upload-row">
+            <div class="image-preview" id="infoLogoImagePreview" data-i18n="noPhoto">No photo</div>
+            <input type="file" id="infoLogoImageFile" accept="image/png,image/jpeg,image/webp,image/gif">
+          </div>
+          <input type="hidden" id="infoLogoImagePath" value="">
+        </label>
+
+        <label class="field"><span data-i18n="coverImageLabel">Cover image (homepage)</span>
+          <div class="image-upload-row">
+            <div class="image-preview" id="infoHeroImagePreview" data-i18n="noPhoto">No photo</div>
+            <input type="file" id="infoHeroImageFile" accept="image/png,image/jpeg,image/webp,image/gif">
+          </div>
+          <input type="hidden" id="infoHeroImagePath" value="">
+        </label>
+
+        <label class="field">
+          <span data-i18n="whatsappLabel">WhatsApp number (digits only, country code first)</span>
+          <input type="text" id="infoWhatsapp" placeholder="212600000000" required>
+        </label>
+        <label class="field">
+          <span data-i18n="phoneDisplayedLabel">Phone (displayed)</span>
+          <input type="text" id="infoPhone" placeholder="+212 6 00 00 00 00">
+        </label>
+        <label class="field">
+          <span data-i18n="phoneLinkLabel">Phone link (tel:)</span>
+          <input type="text" id="infoPhoneHref" placeholder="tel:+212600000000">
+        </label>
+        <label class="field">
+          <span data-i18n="googleMapsLabel">Google Maps URL</span>
+          <input type="text" id="infoGoogleMaps" placeholder="https://maps.app.goo.gl/...">
+        </label>
+        <label class="field">
+          <span data-i18n="googleReviewLabel">Google Review URL</span>
+          <input type="text" id="infoGoogleReview" placeholder="https://g.page/r/.../review">
+        </label>
+        <label class="field">
+          <span data-i18n="webhookLabel">Webhook URL (optional — POS / Zapier / custom integration)</span>
+          <input type="text" id="infoWebhookUrl" placeholder="https://your-pos-or-zapier-endpoint.com/...">
+          <p class="form-hint" data-i18n="webhookHint">Every new order and status change gets POSTed here as JSON. Leave blank to disable.</p>
+        </label>
+
+        <fieldset class="field-group">
+          <legend data-i18n="openingHoursLegend">Opening hours</legend>
+          <label class="field"><span data-i18n="frenchLabel">French</span><input type="text" id="infoHoursFr"></label>
+          <label class="field"><span data-i18n="englishLabel">English</span><input type="text" id="infoHoursEn"></label>
+          <label class="field"><span data-i18n="arabicLabel">Arabic</span><input type="text" id="infoHoursAr" dir="rtl"></label>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend data-i18n="addressLegend">Address</legend>
+          <label class="field"><span data-i18n="frenchLabel">French</span><input type="text" id="infoAddressFr"></label>
+          <label class="field"><span data-i18n="englishLabel">English</span><input type="text" id="infoAddressEn"></label>
+          <label class="field"><span data-i18n="arabicLabel">Arabic</span><input type="text" id="infoAddressAr" dir="rtl"></label>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend data-i18n="socialLinksLegend">Social links</legend>
+          <label class="field"><span data-i18n="instagramUrlLabel">Instagram URL</span><input type="text" id="infoInstagram"></label>
+          <label class="field"><span data-i18n="facebookUrlLabel">Facebook URL</span><input type="text" id="infoFacebook"></label>
+          <label class="field"><span data-i18n="tiktokUrlLabel">TikTok URL</span><input type="text" id="infoTiktok"></label>
+        </fieldset>
+
+        <p class="form-error" id="infoError" hidden></p>
+        <button type="submit" class="btn btn-primary" data-i18n="saveRestaurantInfo">Save restaurant info</button>
+      </form>
+    </section>
+  </main>
+</div>
+
+<div id="modalRoot"></div>
+<div class="admin-toast" id="adminToast" role="status" aria-live="polite"></div>
+<div id="printTicket" class="print-ticket"></div>
+
+<script src="/admin/admin.js"></script>
+</body>
+</html>
