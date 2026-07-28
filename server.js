@@ -104,6 +104,28 @@ app.use("/api", ordersRoutes);
 app.use("/api", statsRoutes);
 app.use("/api", assistanceRoutes);
 
+// TEMPORARY (round 2) — the connection-retry fix didn't fully resolve
+// production 500s; need the real driver error again to see what's actually
+// failing on a fresh cold start. Remove once root-caused for good.
+app.get("/api/_diag", async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const db = await require("./server/mongo").getDb();
+    await db.command({ ping: 1 });
+    res.json({ ok: true, ms: Date.now() - startedAt });
+  } catch (err) {
+    res.json({
+      ok: false,
+      ms: Date.now() - startedAt,
+      name: err.name,
+      code: err.code,
+      codeName: err.codeName,
+      message: String(err.message || "").replace(/mongodb(\+srv)?:\/\/[^\s]+/gi, "[redacted-uri]"),
+      stack: String(err.stack || "").split("\n").slice(0, 4).join(" | ").replace(/mongodb(\+srv)?:\/\/[^\s]+/gi, "[redacted-uri]")
+    });
+  }
+});
+
 app.use("/api", (req, res) => res.status(404).json({ error: "not_found" }));
 
 // Local dev: Express serves these directly. On Vercel, express.static() is
