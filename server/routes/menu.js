@@ -203,8 +203,7 @@ router.put("/admin/menu-items/:id", requireOwner, async (req, res) => {
   const existing = await db.collection("menu_items").findOne({ _id: req.params.id });
   if (!existing) return res.status(404).json({ error: "not_found" });
   const b = req.body || {};
-  if (!b.categoryId || !b.nameFr || !b.nameEn || !b.nameAr || b.price == null) {
-    return res.status(400).json({ error: "invalid_input", message: "Category, name (3 languages) and price are required." });
+if (typeof b.categoryId !== "string" || !b.categoryId || !b.nameFr || !b.nameEn || !b.nameAr || b.price == null) {return res.status(400).json({ error: "invalid_input", message: "Category, name (3 languages) and price are required." });
   }
   const category = await db.collection("categories").findOne({ _id: b.categoryId });
   if (!category) return res.status(400).json({ error: "invalid_category" });
