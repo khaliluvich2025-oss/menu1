@@ -15,8 +15,24 @@ let readyPromise = null;
 // Lazily connects, creates indexes, and seeds on first use, then caches the
 // same promise for every subsequent call on this instance — route handlers
 // call `await ensureReady()` at the top and get the ready `db` handle back.
+//
+// Same failure-caching bug as server/mongo.js's getClientPromise(), just one
+// layer up: without the .catch() below, a single failed initialize() (e.g.
+// getDb() hiccups, or an index/seed call throws) would permanently wedge
+// readyPromise as a rejected promise for this instance's whole lifetime —
+// every route handler that calls ensureReady() would replay the same dead
+// rejection forever instead of getting a chance to reconnect. Confirmed
+// live: mongo.js's own connection retried fine (a direct getDb()+ping
+// succeeded reliably) while every real route — which all go through THIS
+// function — kept 500ing, because this cache, not the connection, was the
+// one stuck.
 function ensureReady() {
-  if (!readyPromise) readyPromise = initialize();
+  if (!readyPromise) {
+    readyPromise = initialize().catch((err) => {
+      readyPromise = null;
+      throw err;
+    });
+  }
   return readyPromise;
 }
 
