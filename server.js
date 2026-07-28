@@ -107,22 +107,40 @@ app.use("/api", assistanceRoutes);
 // TEMPORARY (round 2) — the connection-retry fix didn't fully resolve
 // production 500s; need the real driver error again to see what's actually
 // failing on a fresh cold start. Remove once root-caused for good.
+function describeErr(err, startedAt) {
+  return {
+    ok: false,
+    ms: Date.now() - startedAt,
+    name: err.name,
+    code: err.code,
+    codeName: err.codeName,
+    message: String(err.message || "").replace(/mongodb(\+srv)?:\/\/[^\s]+/gi, "[redacted-uri]"),
+    stack: String(err.stack || "").split("\n").slice(0, 4).join(" | ").replace(/mongodb(\+srv)?:\/\/[^\s]+/gi, "[redacted-uri]")
+  };
+}
+
 app.get("/api/_diag", async (req, res) => {
   const startedAt = Date.now();
   try {
     const db = await require("./server/mongo").getDb();
     await db.command({ ping: 1 });
-    res.json({ ok: true, ms: Date.now() - startedAt });
+    res.json({ ok: true, ms: Date.now() - startedAt, step: "mongo.getDb+ping" });
   } catch (err) {
-    res.json({
-      ok: false,
-      ms: Date.now() - startedAt,
-      name: err.name,
-      code: err.code,
-      codeName: err.codeName,
-      message: String(err.message || "").replace(/mongodb(\+srv)?:\/\/[^\s]+/gi, "[redacted-uri]"),
-      stack: String(err.stack || "").split("\n").slice(0, 4).join(" | ").replace(/mongodb(\+srv)?:\/\/[^\s]+/gi, "[redacted-uri]")
-    });
+    res.json({ ...describeErr(err, startedAt), step: "mongo.getDb+ping" });
+  }
+});
+
+// Also exercise the FULL path every real route actually uses (server/db.js's
+// ensureReady(), which does more than connect — it creates indexes and runs
+// seed checks). /api/_diag above only proved the raw connection is fine;
+// this checks whether initialize() itself is what's actually failing.
+app.get("/api/_diag2", async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    await require("./server/db").ensureReady();
+    res.json({ ok: true, ms: Date.now() - startedAt, step: "db.ensureReady" });
+  } catch (err) {
+    res.json({ ...describeErr(err, startedAt), step: "db.ensureReady" });
   }
 });
 
